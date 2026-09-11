@@ -319,6 +319,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 @interface DDanmakuPlayerView : UIView
 @end
+@interface AWEPlayInteractionDanmakuPlayer : UIView
+@end
 
 @interface AWEDanmakuItemTextInfo : NSObject
 @property(nonatomic, strong) NSAttributedString *danmakuText;
@@ -747,6 +749,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEProfileTaskCardStyleCardItemCell : UIView
+@end
+@interface AWEProfileTaskCardStyleListItemCell : UIView
 @end
 
 @interface AWEProfileUserDetailComponent : NSObject
@@ -1953,4 +1957,14 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // 顶栏选中指示线
 @interface AWEFeedMultiTabSelectedContainerView : UIView
+@end
+
+// 40.x 适配：新增替代类声明
+@interface AWEProfileAvatarFunctionManager : NSObject
+@end
+
+@interface AWEAwesomeSplashFeedCell : UIView
+@end
+
+@interface AWEProfilePublishGuideCollectionViewCell : UIView
 @end

@@ -3239,7 +3239,29 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
+// 40.x 适配：XIGDanmakuPlayerView 已移除，用 AWEPlayInteractionDanmakuPlayer 替代
+// 保留旧类名 hook 用于旧版本兼容（通过 %ctor 动态绑定到新类）
 %hook XIGDanmakuPlayerView
+
+- (id)initWithFrame:(CGRect)frame {
+    id orig = %orig;
+
+    ((UIView *)orig).tag = DYYY_IGNORE_GLOBAL_ALPHA_TAG;
+
+    return orig;
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    if (DYYYGetBool(@"DYYYCommentShowDanmaku") && alpha == 0.0) {
+        return;
+    } else {
+        %orig(alpha);
+    }
+}
+
+%end
+
+%hook AWEPlayInteractionDanmakuPlayer
 
 - (id)initWithFrame:(CGRect)frame {
     id orig = %orig;
@@ -3773,6 +3795,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
+// 40.x 适配：AWEPlayInteractionDescriptionScrollView 已移除，功能由 AWEPlayInteractionDescriptionLabel 完全覆盖
 %hook AWEPlayInteractionDescriptionScrollView
 
 - (void)layoutSubviews {
@@ -4674,7 +4697,18 @@ static BOOL isGestureActive = NO;
 %end
 
 // 强制启用保存他人头像
+// 40.x 适配：AFDProfileAvatarFunctionManager → AWEProfileAvatarFunctionManager
 %hook AFDProfileAvatarFunctionManager
+- (BOOL)shouldShowSaveAvatarItem {
+    BOOL shouldEnable = DYYYGetBool(@"DYYYEnableSaveAvatar");
+    if (shouldEnable) {
+        return YES;
+    }
+    return %orig;
+}
+%end
+
+%hook AWEProfileAvatarFunctionManager
 - (BOOL)shouldShowSaveAvatarItem {
     BOOL shouldEnable = DYYYGetBool(@"DYYYEnableSaveAvatar");
     if (shouldEnable) {
@@ -5893,6 +5927,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 
 
 // 隐藏消息页顶栏头像气泡
+// 40.x 适配：AFDSkylightCellBubble 已移除，气泡逻辑拆分到 AWEConcernRedDotEffectManager / AWEFamiliarSkylightCapsuleCoordinator
 %hook AFDSkylightCellBubble
 - (void)layoutSubviews {
     if (DYYYGetBool(@"DYYYHideAvatarBubble")) {
@@ -6220,6 +6255,8 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 
 %end
 
+// 40.x 适配：AWEPlayInteractionElementMaskView 已移除，主 App 重构为 AWEDCFeedCellImageElementMaskConfig；
+// 隐藏渐变功能由 AWEGradientView hook 覆盖，此 hook 仅保留用于旧版本兼容
 %hook AWEPlayInteractionElementMaskView
 - (void)layoutSubviews {
     if (DYYYGetBool(@"DYYYHideGradient")) {
@@ -7495,7 +7532,31 @@ static NSHashTable *processedParentViews = nil;
 
 %end
 
+// 40.x 适配：AWEProfilePostEmptyPublishGuideCollectionViewCell → AWEProfilePublishGuideCollectionViewCell
+%hook AWEProfilePublishGuideCollectionViewCell
+
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBool(@"DYYYHidePostView")) {
+        if ([(UIView *)self superview]) {
+            [(UIView *)self setHidden:YES];
+        }
+    }
+}
+
+%end
+
 %hook AWEProfileTaskCardStyleCardItemCell
+- (BOOL)shouldShowPublishGuide {
+    if (DYYYGetBool(@"DYYYHidePostView")) {
+        return NO;
+    }
+    return %orig;
+}
+%end
+
+// 40.x 适配：AWEProfileTaskCardStyleCardItemCell → AWEProfileTaskCardStyleListItemCell
+%hook AWEProfileTaskCardStyleListItemCell
 - (BOOL)shouldShowPublishGuide {
     if (DYYYGetBool(@"DYYYHidePostView")) {
         return NO;
@@ -9358,6 +9419,7 @@ static NSHashTable *processedParentViews = nil;
 %end
 
 // 去除启动视频广告
+// 40.x 适配：AWEAwesomeSplashFeedCellOldAccessoryView 重命名为 AWEAwesomeSplashFeedCell
 %hook AWEAwesomeSplashFeedCellOldAccessoryView
 
 // 在方法入口处添加控制逻辑
@@ -9370,6 +9432,15 @@ static NSHashTable *processedParentViews = nil;
 	return %orig;
 }
 
+%end
+
+%hook AWEAwesomeSplashFeedCell
+- (id)ddExtraView {
+	if (DYYYGetBool(@"DYYYNoAds")) {
+		return NULL;
+	}
+	return %orig;
+}
 %end
 
 // 屏蔽青少年模式弹窗
@@ -11669,22 +11740,7 @@ static Class tabBarButtonClass = nil;
 }
 %end
 
-%hook AWEFeedTableViewCell
-- (void)prepareForReuse {
-    if (hideButton && hideButton.isElementsHidden) {
-        [hideButton hideUIElements];
-    }
-    %orig;
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (hideButton && hideButton.isElementsHidden) {
-        [hideButton hideUIElements];
-    }
-}
-%end
-
+// 40.x 适配：AWEFeedTableViewCell 已移除，其功能由 AWEFeedViewCell 完全覆盖
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
@@ -12711,6 +12767,8 @@ static Class TagViewClass = nil;
 %end
 
 // 移除极速版我的片面红包横幅
+// 40.x 适配：AWELuckyCatBannerView 已移除，主 App 中改为 Lynx/Lottie 方案（AITXBridgeUgLuckycatShowLottieAsBannerMethod）
+// 此 hook 仅保留用于旧版本兼容，新版中通过激励系统 ABTest 控制
 %hook AWELuckyCatBannerView
 - (id)initWithFrame:(CGRect)frame {
     return nil;
@@ -12998,22 +13056,37 @@ static void findTargetViewInView(UIView *view) {
         [FloatingSpeedButton reloadConfiguration];
 
         // 初始化红包激励挂件容器视图类组
+        // 40.x 适配：模块名从 AWEIncentiveSwiftImplDOUYINLite 改为 AWEIncentiveSwiftImpl（去掉了 DOUYINLite）
         Class incentivePendantClass = objc_getClass("AWEIncentiveSwiftImplDOUYINLite.IncentivePendantContainerView");
+        if (!incentivePendantClass) {
+            incentivePendantClass = objc_getClass("AWEIncentiveSwiftImpl.IncentivePendantContainerView");
+        }
         if (incentivePendantClass) {
             %init(IncentivePendantGroup, AWEIncentiveSwiftImplDOUYINLite_IncentivePendantContainerView = incentivePendantClass);
         }
+        // 40.x 适配：BDMultiContentContainer.ImageContentView 已移除，替代为 BDMultiContentContainer.OverlayView
         Class imageContentClass = objc_getClass("BDMultiContentContainer.ImageContentView");
+        if (!imageContentClass) {
+            imageContentClass = objc_getClass("BDMultiContentContainer.OverlayView");
+        }
         if (imageContentClass) {
             %init(BDMultiContentImageViewGroup, BDMultiContentContainer_ImageContentView = imageContentClass);
         }
 
         // 动态获取 Swift 类并初始化对应的组
+        // 40.x 适配：CommentHeaderGeneralView / CommentHeaderGoodsView 模块从 AWECommentPanelHeaderSwiftImpl 重命名为 AWECommentCommerceSwiftImpl
         Class commentHeaderGeneralClass = objc_getClass("AWECommentPanelHeaderSwiftImpl.CommentHeaderGeneralView");
+        if (!commentHeaderGeneralClass) {
+            commentHeaderGeneralClass = objc_getClass("AWECommentCommerceSwiftImpl.CommentHeaderGeneralView");
+        }
         if (commentHeaderGeneralClass) {
             %init(CommentHeaderGeneralGroup, AWECommentPanelHeaderSwiftImpl_CommentHeaderGeneralView = commentHeaderGeneralClass);
         }
 
         Class commentHeaderGoodsClass = objc_getClass("AWECommentPanelHeaderSwiftImpl.CommentHeaderGoodsView");
+        if (!commentHeaderGoodsClass) {
+            commentHeaderGoodsClass = objc_getClass("AWECommentCommerceSwiftImpl.CommentHeaderGoodsView");
+        }
         if (commentHeaderGoodsClass) {
             %init(CommentHeaderGoodsGroup, AWECommentPanelHeaderSwiftImpl_CommentHeaderGoodsView = commentHeaderGoodsClass);
         }

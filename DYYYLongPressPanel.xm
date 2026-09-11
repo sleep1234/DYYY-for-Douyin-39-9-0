@@ -1475,6 +1475,7 @@
 
 // 隐藏评论分享功能
 
+// 40.x 适配：AWEIMCommentShareUserHorizontalCollectionViewCell 已移除，IM 评论分享重构为 AWEIMCommentShareModel / AWEIMCommentShareCommentBubleView
 %hook AWEIMCommentShareUserHorizontalCollectionViewCell
 
 - (void)layoutSubviews {
@@ -1489,6 +1490,7 @@
 
 %end
 
+// 40.x 适配：AWEIMCommentShareUserHorizontalSectionController 已移除
 %hook AWEIMCommentShareUserHorizontalSectionController
 
 - (CGSize)sizeForItemAtIndex:(NSInteger)index model:(id)model collectionViewSize:(CGSize)size {
