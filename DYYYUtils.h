@@ -13,17 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Public Model Filtering Utilities (公共模型过滤工具)
 
-/** 使用抖音模型自身的广告判定及明确广告字段识别广告作品。 */
-+ (BOOL)isAdvertisementAwemeModel:(id)model;
-
-/** 识别作品模型或搜索结果包装模型中的广告。 */
-+ (BOOL)isAdvertisementContainerModel:(id)model;
-
-/** 从列表中移除广告模型；未启用屏蔽广告时原样返回。 */
-+ (NSArray *)arrayByRemovingAdvertisements:(id)array;
-
-/** 在作品模型字段尚未完成映射时，从原始响应中识别明确广告标记。 */
-+ (BOOL)isAdvertisementRawData:(id)rawData;
+// 去广告相关辅助方法已移除（40.x 重构：改用 AWEAwemeModel.isAds 直接判定，参考 AwemeNoAds.dylib）
 
 /**
  * @brief 处理并更新UILabel以显示IP属地。
