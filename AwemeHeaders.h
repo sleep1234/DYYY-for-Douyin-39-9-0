@@ -1968,3 +1968,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEProfilePublishGuideCollectionViewCell : UIView
 @end
+
+// 开屏广告管理器（参考 AwemeNoAds.dylib）
+@interface AWESplashManager : NSObject
+- (void)tryToShowSplash;
+@end

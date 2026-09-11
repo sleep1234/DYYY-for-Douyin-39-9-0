@@ -9370,6 +9370,18 @@ static NSHashTable *processedParentViews = nil;
 %end
 
 
+// 拦截开屏广告 - hook AWESplashManager.tryToShowSplash 方法（参考 AwemeNoAds.dylib）
+%hook AWESplashManager
+
+- (void)tryToShowSplash {
+    if (DYYYGetBool(@"DYYYNoAds")) {
+        return;  // 直接返回，不显示开屏广告
+    }
+    %orig;
+}
+
+%end
+
 // 拦截开屏广告 - hook TTAdSplashModel，直接返回 nil
 %hook TTAdSplashModel
 
