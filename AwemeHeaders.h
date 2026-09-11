@@ -1973,3 +1973,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWESplashManager : NSObject
 - (void)tryToShowSplash;
 @end
+
+// 激励视频广告控制器（参考 AwemeNoAds.dylib）
+@interface BDARewardedVideoAdBaseController : NSObject
+- (void)buildUpView;
+- (void)sendReward;
+@end
