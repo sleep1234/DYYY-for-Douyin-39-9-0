@@ -20,6 +20,7 @@ on:
       - 'Makefile'
       - 'Resources/**'
       - 'layout/**'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       scheme:
@@ -35,7 +36,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 jobs:
   changes:
@@ -198,3 +199,21 @@ jobs:
         with:
           name: DYYY-${{ steps.package.outputs.timestamp }}
           path: ${{ github.workspace }}/packages/*.deb
+
+      - name: Publish packages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dyyy-packages
+          cp packages/*.deb /tmp/dyyy-packages/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan build-artifacts
+          git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx >/dev/null 2>&1 || true
+          cp /tmp/dyyy-packages/*.deb .
+          git add ./*.deb
+          git commit -m "build: publish packages for $GITHUB_SHA"
+          git push --force origin HEAD:refs/heads/build-artifacts
