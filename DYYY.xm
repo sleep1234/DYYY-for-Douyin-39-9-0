@@ -12951,6 +12951,7 @@ static void findTargetViewInView(UIView *view) {
     }
 }
 
+// CI keeps the rootful compiler output as an artifact so Logos/clang failures remain diagnosable.
 %ctor {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         @"DYYYDisableFeedNowPlayingInfo" : @YES

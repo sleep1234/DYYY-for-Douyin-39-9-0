@@ -110,10 +110,20 @@ jobs:
         
       - name: Build Rootful
         run: |
-          make package FINALPACKAGE=1 -j$(sysctl -n hw.ncpu)
+          mkdir -p ci-logs
+          set -o pipefail
+          make package FINALPACKAGE=1 -j$(sysctl -n hw.ncpu) 2>&1 | tee ci-logs/rootful.log
           for f in packages/*.deb; do
             [ -f "$f" ] && [[ "$f" != *"-root"*".deb" ]] && mv "$f" "${f%.deb}-rootful.deb"
           done
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: DYYY-build-logs-${{ github.run_id }}
+          path: ci-logs/*.log
+          if-no-files-found: warn
              
       - name: Build Rootless
         run: |
