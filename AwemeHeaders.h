@@ -655,6 +655,22 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface _TtC23BDMultiContentContainer11OverlayView : UIView
 @end
 
+// Logos 动态别名类：用于运行时名称包含模块分隔符的 Swift/旧版类。
+@interface AWECommentSwiftBizUI_CommentInteractionBaseLabel : UILabel
+@end
+@interface AWECommentPanelHeaderSwiftImpl_CommentHeaderGeneralView : UIView
+@end
+@interface AWECommentPanelHeaderSwiftImpl_CommentHeaderGoodsView : UIView
+@end
+@interface AWECommentPanelHeaderSwiftImpl_CommentHeaderTemplateAnchorView : UIView
+@end
+@interface AWECommentPanelListSwiftImpl_CommentBottomTipsContainerViewController : UIViewController
+@end
+@interface AWEIncentiveSwiftImplDOUYINLite_IncentivePendantContainerView : UIView
+@end
+@interface BDMultiContentContainer_ImageContentView : UIView
+@end
+
 @interface AWECommentLongPressPanelSwiftImpl_CommentLongPressPanelReportElement : NSObject
 - (AWECommentLongPressPanelContext *)commentPageContext;
 - (BOOL)elementShouldShow;
@@ -1983,6 +1999,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // 40.x 适配：新增替代类声明
 @interface AWEProfileAvatarFunctionManager : NSObject
+@end
+@interface AFDProfileAvatarFunctionManager : NSObject
+@end
+@interface AWEProfilePostEmptyPublishGuideCollectionViewCell : UIView
 @end
 
 @interface AWEAwesomeSplashFeedCell : UIView

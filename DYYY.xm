@@ -3806,7 +3806,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 - (void)layoutSubviews {
     %orig;
 
-    self.transform = CGAffineTransformIdentity;
+    ((UIView *)self).transform = CGAffineTransformIdentity;
 
     NSString *descriptionOffsetValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYDescriptionVerticalOffset"];
     CGFloat verticalOffset = 0;
@@ -3814,7 +3814,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
         verticalOffset = [descriptionOffsetValue floatValue];
     }
 
-    UIView *parentView = self.superview;
+    UIView *parentView = ((UIView *)self).superview;
     UIView *grandParentView = nil;
 
     if (parentView) {
@@ -5902,7 +5902,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYHideCommentViews")) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
     }
 }
 %end
@@ -5913,7 +5913,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYHideCommentViews")) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
     }
 }
 %end
@@ -6295,7 +6295,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %hook AWEPlayInteractionElementMaskView
 - (void)layoutSubviews {
     if (DYYYGetBool(@"DYYYHideGradient")) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
         return;
     }
     %orig;
@@ -7258,8 +7258,9 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 - (void)setupUI {
     %orig;
     if (DYYYGetBool(@"DYYYHidePauseVideoRelatedWord")) {
-        if (self.relatedView) {
-            self.relatedView.hidden = YES;
+        AWEFeedPauseVideoRelatedWordView *relatedView = [(AWEFeedPauseModalBaseComponent *)self relatedView];
+        if (relatedView) {
+            relatedView.hidden = YES;
         }
     }
 }
