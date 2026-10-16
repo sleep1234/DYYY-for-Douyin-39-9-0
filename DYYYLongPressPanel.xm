@@ -1476,6 +1476,7 @@
 // 隐藏评论分享功能
 
 // 40.x 适配：AWEIMCommentShareUserHorizontalCollectionViewCell 已移除，IM 评论分享重构为 AWEIMCommentShareModel / AWEIMCommentShareCommentBubleView
+%group LegacyCommentShareGroup
 %hook AWEIMCommentShareUserHorizontalCollectionViewCell
 
 - (void)layoutSubviews {
@@ -1508,10 +1509,70 @@
 }
 
 %end
+%end
+
+// 抖音 40.7.0 将 IM 评论分享重构为 AWECommentShareContainerCell。
+// 仅在运行时存在该类时初始化，避免影响旧版本。
+%group ModernCommentShareGroup
+%hook AWECommentShareContainerCell
+
+- (void)layoutSubviews {
+    %orig;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentShareToFriends"]) {
+        self.hidden = YES;
+    }
+}
+
+%end
+%end
+
+%group ModernCommentShareSectionGroup
+%hook AWECommentShareSectionController
+
+- (CGSize)sizeForItemAtIndex:(NSInteger)index model:(id)model collectionViewSize:(CGSize)size {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentShareToFriends"]) {
+        return CGSizeZero;
+    }
+    return %orig;
+}
+
+- (void)configCell:(id)cell index:(NSInteger)index model:(id)model {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentShareToFriends"]) {
+        return;
+    }
+    %orig;
+}
+
+%end
+%end
 
 %ctor {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYUserAgreementAccepted"]) {
+        // 初始化未分组的通用长按面板 Hook；版本敏感 Hook 在下方按类/方法存在性单独初始化。
         %init;
+
+        Class legacyCellClass = objc_getClass("AWEIMCommentShareUserHorizontalCollectionViewCell");
+        Class legacySectionClass = objc_getClass("AWEIMCommentShareUserHorizontalSectionController");
+        if (legacyCellClass && legacySectionClass &&
+            class_getInstanceMethod(legacyCellClass, @selector(layoutSubviews)) &&
+            class_getInstanceMethod(legacySectionClass, @selector(sizeForItemAtIndex:model:collectionViewSize:)) &&
+            class_getInstanceMethod(legacySectionClass, @selector(configCell:index:model:))) {
+            %init(LegacyCommentShareGroup,
+                  AWEIMCommentShareUserHorizontalCollectionViewCell = legacyCellClass,
+                  AWEIMCommentShareUserHorizontalSectionController = legacySectionClass);
+        }
+
+        Class modernCommentShareClass = objc_getClass("AWECommentShareContainerCell");
+        if (modernCommentShareClass && class_getInstanceMethod(modernCommentShareClass, @selector(layoutSubviews))) {
+            %init(ModernCommentShareGroup, AWECommentShareContainerCell = modernCommentShareClass);
+        }
+
+        Class modernCommentShareSectionClass = objc_getClass("AWECommentShareSectionController");
+        if (modernCommentShareSectionClass &&
+            class_getInstanceMethod(modernCommentShareSectionClass, @selector(sizeForItemAtIndex:model:collectionViewSize:)) &&
+            class_getInstanceMethod(modernCommentShareSectionClass, @selector(configCell:index:model:))) {
+            %init(ModernCommentShareSectionGroup, AWECommentShareSectionController = modernCommentShareSectionClass);
+        }
     }
 }
 

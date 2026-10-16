@@ -3241,6 +3241,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 // 40.x 适配：XIGDanmakuPlayerView 已移除，用 AWEPlayInteractionDanmakuPlayer 替代
 // 保留旧类名 hook 用于旧版本兼容（通过 %ctor 动态绑定到新类）
+%group LegacyXIGDanmakuGroup
 %hook XIGDanmakuPlayerView
 
 - (id)initWithFrame:(CGRect)frame {
@@ -3259,6 +3260,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     }
 }
 
+%end
 %end
 
 %hook AWEPlayInteractionDanmakuPlayer
@@ -3281,6 +3283,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
+%group LegacyDDanmakuGroup
 %hook DDanmakuPlayerView
 
 - (void)setAlpha:(CGFloat)alpha {
@@ -3291,6 +3294,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     }
 }
 
+%end
 %end
 
 %hook AWEMarkView
@@ -3796,6 +3800,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 %end
 
 // 40.x 适配：AWEPlayInteractionDescriptionScrollView 已移除，功能由 AWEPlayInteractionDescriptionLabel 完全覆盖
+%group LegacyDescriptionScrollViewGroup
 %hook AWEPlayInteractionDescriptionScrollView
 
 - (void)layoutSubviews {
@@ -3822,6 +3827,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     }
 }
 
+%end
 %end
 
 // 对新版文案的偏移（33.0以上）
@@ -4698,6 +4704,7 @@ static BOOL isGestureActive = NO;
 
 // 强制启用保存他人头像
 // 40.x 适配：AFDProfileAvatarFunctionManager → AWEProfileAvatarFunctionManager
+%group LegacyProfileAvatarFunctionGroup
 %hook AFDProfileAvatarFunctionManager
 - (BOOL)shouldShowSaveAvatarItem {
     BOOL shouldEnable = DYYYGetBool(@"DYYYEnableSaveAvatar");
@@ -4706,6 +4713,7 @@ static BOOL isGestureActive = NO;
     }
     return %orig;
 }
+%end
 %end
 
 %hook AWEProfileAvatarFunctionManager
@@ -5887,6 +5895,30 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %end
 %end
 
+// 抖音 40.7.0 将评论商业组件改为 Swift mangled runtime 类名。
+// 逻辑与旧模块名保持一致，通过 %ctor 仅在类存在时初始化。
+%group CommentCommerceHeaderGeneralGroup
+%hook _TtC27AWECommentCommerceSwiftImpl24CommentHeaderGeneralView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYHideCommentViews")) {
+        self.hidden = YES;
+    }
+}
+%end
+%end
+
+%group CommentCommerceHeaderGoodsGroup
+%hook _TtC27AWECommentCommerceSwiftImpl22CommentHeaderGoodsView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYHideCommentViews")) {
+        self.hidden = YES;
+    }
+}
+%end
+%end
+
 // 去除隐藏大家都在搜后的留白
 %hook AWESearchAnchorListModel
 
@@ -5928,6 +5960,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 
 // 隐藏消息页顶栏头像气泡
 // 40.x 适配：AFDSkylightCellBubble 已移除，气泡逻辑拆分到 AWEConcernRedDotEffectManager / AWEFamiliarSkylightCapsuleCoordinator
+%group LegacySkylightBubbleGroup
 %hook AFDSkylightCellBubble
 - (void)layoutSubviews {
     if (DYYYGetBool(@"DYYYHideAvatarBubble")) {
@@ -5935,6 +5968,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
     }
     %orig;
 }
+%end
 %end
 
 // 隐藏消息页开启通知提示
@@ -6257,6 +6291,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 
 // 40.x 适配：AWEPlayInteractionElementMaskView 已移除，主 App 重构为 AWEDCFeedCellImageElementMaskConfig；
 // 隐藏渐变功能由 AWEGradientView hook 覆盖，此 hook 仅保留用于旧版本兼容
+%group LegacyElementMaskGroup
 %hook AWEPlayInteractionElementMaskView
 - (void)layoutSubviews {
     if (DYYYGetBool(@"DYYYHideGradient")) {
@@ -6265,6 +6300,7 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
     }
     %orig;
 }
+%end
 %end
 
 %hook AWEGradientView
@@ -7188,6 +7224,7 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 
 
 // 隐藏暂停关键词
+%group LegacyPauseModalGroup
 %hook AWEFeedPauseModalBaseComponent
 
 - (id)updateViewWithModel:(id)arg0 {
@@ -7227,6 +7264,7 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
     }
 }
 
+%end
 %end
 
 // 隐藏视频顶部搜索框、隐藏搜索框背景、应用全局透明
@@ -7519,6 +7557,7 @@ static NSHashTable *processedParentViews = nil;
 }
 %end
 
+%group LegacyProfilePublishGuideGroup
 %hook AWEProfilePostEmptyPublishGuideCollectionViewCell
 
 - (void)didMoveToSuperview {
@@ -7531,8 +7570,10 @@ static NSHashTable *processedParentViews = nil;
 }
 
 %end
+%end
 
 // 40.x 适配：AWEProfilePostEmptyPublishGuideCollectionViewCell → AWEProfilePublishGuideCollectionViewCell
+%group ModernProfilePublishGuideGroup
 %hook AWEProfilePublishGuideCollectionViewCell
 
 - (void)didMoveToSuperview {
@@ -7545,7 +7586,9 @@ static NSHashTable *processedParentViews = nil;
 }
 
 %end
+%end
 
+%group LegacyProfileTaskCardGroup
 %hook AWEProfileTaskCardStyleCardItemCell
 - (BOOL)shouldShowPublishGuide {
     if (DYYYGetBool(@"DYYYHidePostView")) {
@@ -7554,8 +7597,10 @@ static NSHashTable *processedParentViews = nil;
     return %orig;
 }
 %end
+%end
 
 // 40.x 适配：AWEProfileTaskCardStyleCardItemCell → AWEProfileTaskCardStyleListItemCell
+%group ModernProfileTaskCardGroup
 %hook AWEProfileTaskCardStyleListItemCell
 - (BOOL)shouldShowPublishGuide {
     if (DYYYGetBool(@"DYYYHidePostView")) {
@@ -7563,6 +7608,7 @@ static NSHashTable *processedParentViews = nil;
     }
     return %orig;
 }
+%end
 %end
 
 %hook AWEProfileRichEmptyView
@@ -12583,6 +12629,7 @@ static Class TagViewClass = nil;
 }
 %end
 
+%group LegacyIncentivePendantGroup
 %hook _TtC21AWEIncentiveSwiftImpl29IncentivePendantContainerView
 - (void)layoutSubviews {
     %orig;
@@ -12590,6 +12637,7 @@ static Class TagViewClass = nil;
         [self removeFromSuperview];
     }
 }
+%end
 %end
 
 %hook UIImageView
@@ -12640,6 +12688,7 @@ static Class TagViewClass = nil;
 // 移除极速版我的片面红包横幅
 // 40.x 适配：AWELuckyCatBannerView 已移除，主 App 中改为 Lynx/Lottie 方案（AITXBridgeUgLuckycatShowLottieAsBannerMethod）
 // 此 hook 仅保留用于旧版本兼容，新版中通过激励系统 ABTest 控制
+%group LegacyLuckyCatBannerGroup
 %hook AWELuckyCatBannerView
 - (id)initWithFrame:(CGRect)frame {
     return nil;
@@ -12648,6 +12697,7 @@ static Class TagViewClass = nil;
 - (id)init {
     return nil;
 }
+%end
 %end
 
 static NSString *const kHideRecentAppsKey = @"DYYYHideSidebarRecentApps";
@@ -12788,6 +12838,29 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 %end
 
+// 抖音 40.7.0 使用新的 Swift mangled 名称。
+%group IncentivePendantModernGroup
+%hook _TtC21AWEIncentiveSwiftImpl20PendantContainerView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYHidePendantGroup")) {
+        [self removeFromSuperview];
+    }
+}
+%end
+%end
+
+%group BDMultiContentOverlayGroup
+%hook _TtC23BDMultiContentContainer11OverlayView
+- (void)setTransform:(CGAffineTransform)transform {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        return;
+    }
+    %orig(transform);
+}
+%end
+%end
+
 // View scaling fix when comment blur is enabled
 %group BDMultiContentImageViewGroup
 %hook BDMultiContentContainer_ImageContentView
@@ -12913,7 +12986,9 @@ static void findTargetViewInView(UIView *view) {
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
           Class wSwiftImpl = objc_getClass("AWECommentInputViewSwiftImpl.CommentInputContainerView");
-          %init(CommentInputContainerView = wSwiftImpl);
+          if (wSwiftImpl && class_getInstanceMethod(wSwiftImpl, @selector(layoutSubviews))) {
+              %init(CommentInputContainerView = wSwiftImpl);
+          }
         });
         BOOL isAutoPlayEnabled = DYYYGetBool(@"DYYYEnableAutoPlay");
         if (isAutoPlayEnabled) {
@@ -12924,6 +12999,73 @@ static void findTargetViewInView(UIView *view) {
             DYYYGetBool(@"DYYYForceDownloadCommentImage")) {
             %init(EnableStickerSaveMenu);
         }
+
+        Class legacyProfileAvatarClass = objc_getClass("AFDProfileAvatarFunctionManager");
+        if (legacyProfileAvatarClass && class_getInstanceMethod(legacyProfileAvatarClass, @selector(shouldShowSaveAvatarItem))) {
+            %init(LegacyProfileAvatarFunctionGroup, AFDProfileAvatarFunctionManager = legacyProfileAvatarClass);
+        }
+
+        Class legacyProfileGuideClass = objc_getClass("AWEProfilePostEmptyPublishGuideCollectionViewCell");
+        if (legacyProfileGuideClass && class_getInstanceMethod(legacyProfileGuideClass, @selector(didMoveToSuperview))) {
+            %init(LegacyProfilePublishGuideGroup, AWEProfilePostEmptyPublishGuideCollectionViewCell = legacyProfileGuideClass);
+        }
+        Class modernProfileGuideClass = objc_getClass("AWEProfilePublishGuideCollectionViewCell");
+        if (modernProfileGuideClass && class_getInstanceMethod(modernProfileGuideClass, @selector(didMoveToSuperview))) {
+            %init(ModernProfilePublishGuideGroup, AWEProfilePublishGuideCollectionViewCell = modernProfileGuideClass);
+        }
+        Class legacyProfileTaskClass = objc_getClass("AWEProfileTaskCardStyleCardItemCell");
+        if (legacyProfileTaskClass && class_getInstanceMethod(legacyProfileTaskClass, @selector(shouldShowPublishGuide))) {
+            %init(LegacyProfileTaskCardGroup, AWEProfileTaskCardStyleCardItemCell = legacyProfileTaskClass);
+        }
+        Class modernProfileTaskClass = objc_getClass("AWEProfileTaskCardStyleListItemCell");
+        if (modernProfileTaskClass && class_getInstanceMethod(modernProfileTaskClass, @selector(shouldShowPublishGuide))) {
+            %init(ModernProfileTaskCardGroup, AWEProfileTaskCardStyleListItemCell = modernProfileTaskClass);
+        }
+
+        Class legacyXIGDanmakuClass = objc_getClass("XIGDanmakuPlayerView");
+        if (legacyXIGDanmakuClass &&
+            class_getInstanceMethod(legacyXIGDanmakuClass, @selector(initWithFrame:)) &&
+            class_getInstanceMethod(legacyXIGDanmakuClass, @selector(setAlpha:))) {
+            %init(LegacyXIGDanmakuGroup, XIGDanmakuPlayerView = legacyXIGDanmakuClass);
+        }
+
+        Class legacyDDanmakuClass = objc_getClass("DDanmakuPlayerView");
+        if (legacyDDanmakuClass && class_getInstanceMethod(legacyDDanmakuClass, @selector(setAlpha:))) {
+            %init(LegacyDDanmakuGroup, DDanmakuPlayerView = legacyDDanmakuClass);
+        }
+
+        Class legacyDescriptionClass = objc_getClass("AWEPlayInteractionDescriptionScrollView");
+        if (legacyDescriptionClass && class_getInstanceMethod(legacyDescriptionClass, @selector(layoutSubviews))) {
+            %init(LegacyDescriptionScrollViewGroup, AWEPlayInteractionDescriptionScrollView = legacyDescriptionClass);
+        }
+
+        Class legacySkylightBubbleClass = objc_getClass("AFDSkylightCellBubble");
+        if (legacySkylightBubbleClass && class_getInstanceMethod(legacySkylightBubbleClass, @selector(layoutSubviews))) {
+            %init(LegacySkylightBubbleGroup, AFDSkylightCellBubble = legacySkylightBubbleClass);
+        }
+
+        Class legacyElementMaskClass = objc_getClass("AWEPlayInteractionElementMaskView");
+        if (legacyElementMaskClass && class_getInstanceMethod(legacyElementMaskClass, @selector(layoutSubviews))) {
+            %init(LegacyElementMaskGroup, AWEPlayInteractionElementMaskView = legacyElementMaskClass);
+        }
+
+        Class legacyPauseModalClass = objc_getClass("AWEFeedPauseModalBaseComponent");
+        if (legacyPauseModalClass &&
+            class_getInstanceMethod(legacyPauseModalClass, @selector(updateViewWithModel:)) &&
+            class_getInstanceMethod(legacyPauseModalClass, @selector(pauseContentWithModel:)) &&
+            class_getInstanceMethod(legacyPauseModalClass, @selector(recommendsWords)) &&
+            class_getInstanceMethod(legacyPauseModalClass, @selector(showRelatedRecommendPanelControllerWithSelectedText:)) &&
+            class_getInstanceMethod(legacyPauseModalClass, @selector(setupUI))) {
+            %init(LegacyPauseModalGroup, AWEFeedPauseModalBaseComponent = legacyPauseModalClass);
+        }
+
+        Class legacyLuckyCatClass = objc_getClass("AWELuckyCatBannerView");
+        if (legacyLuckyCatClass &&
+            class_getInstanceMethod(legacyLuckyCatClass, @selector(initWithFrame:)) &&
+            class_getInstanceMethod(legacyLuckyCatClass, @selector(init))) {
+            %init(LegacyLuckyCatBannerGroup, AWELuckyCatBannerView = legacyLuckyCatClass);
+        }
+
         [FloatingSpeedButton reloadConfiguration];
 
         // 初始化红包激励挂件容器视图类组
@@ -12932,16 +13074,32 @@ static void findTargetViewInView(UIView *view) {
         if (!incentivePendantClass) {
             incentivePendantClass = objc_getClass("AWEIncentiveSwiftImpl.IncentivePendantContainerView");
         }
-        if (incentivePendantClass) {
+        if (incentivePendantClass && class_getInstanceMethod(incentivePendantClass, @selector(layoutSubviews))) {
             %init(IncentivePendantGroup, AWEIncentiveSwiftImplDOUYINLite_IncentivePendantContainerView = incentivePendantClass);
+        }
+
+        // 抖音 40.7.0 将红包挂件改为 Swift mangled runtime 类名。
+        Class legacyPendantClass = objc_getClass("_TtC21AWEIncentiveSwiftImpl29IncentivePendantContainerView");
+        if (legacyPendantClass && class_getInstanceMethod(legacyPendantClass, @selector(layoutSubviews))) {
+            %init(LegacyIncentivePendantGroup, _TtC21AWEIncentiveSwiftImpl29IncentivePendantContainerView = legacyPendantClass);
+        }
+
+        Class modernPendantClass = objc_getClass("_TtC21AWEIncentiveSwiftImpl20PendantContainerView");
+        if (modernPendantClass && class_getInstanceMethod(modernPendantClass, @selector(layoutSubviews))) {
+            %init(IncentivePendantModernGroup, _TtC21AWEIncentiveSwiftImpl20PendantContainerView = modernPendantClass);
         }
         // 40.x 适配：BDMultiContentContainer.ImageContentView 已移除，替代为 BDMultiContentContainer.OverlayView
         Class imageContentClass = objc_getClass("BDMultiContentContainer.ImageContentView");
         if (!imageContentClass) {
             imageContentClass = objc_getClass("BDMultiContentContainer.OverlayView");
         }
-        if (imageContentClass) {
+        if (imageContentClass && class_getInstanceMethod(imageContentClass, @selector(setTransform:))) {
             %init(BDMultiContentImageViewGroup, BDMultiContentContainer_ImageContentView = imageContentClass);
+        }
+        // 40.7.0 的 OverlayView 使用 Swift mangled runtime 名称。
+        Class modernOverlayClass = objc_getClass("_TtC23BDMultiContentContainer11OverlayView");
+        if (modernOverlayClass && class_getInstanceMethod(modernOverlayClass, @selector(setTransform:))) {
+            %init(BDMultiContentOverlayGroup, _TtC23BDMultiContentContainer11OverlayView = modernOverlayClass);
         }
 
         // 动态获取 Swift 类并初始化对应的组
@@ -12950,24 +13108,32 @@ static void findTargetViewInView(UIView *view) {
         if (!commentHeaderGeneralClass) {
             commentHeaderGeneralClass = objc_getClass("AWECommentCommerceSwiftImpl.CommentHeaderGeneralView");
         }
-        if (commentHeaderGeneralClass) {
+        if (commentHeaderGeneralClass && class_getInstanceMethod(commentHeaderGeneralClass, @selector(layoutSubviews))) {
             %init(CommentHeaderGeneralGroup, AWECommentPanelHeaderSwiftImpl_CommentHeaderGeneralView = commentHeaderGeneralClass);
+        }
+        Class modernCommentHeaderGeneralClass = objc_getClass("_TtC27AWECommentCommerceSwiftImpl24CommentHeaderGeneralView");
+        if (modernCommentHeaderGeneralClass && class_getInstanceMethod(modernCommentHeaderGeneralClass, @selector(layoutSubviews))) {
+            %init(CommentCommerceHeaderGeneralGroup, _TtC27AWECommentCommerceSwiftImpl24CommentHeaderGeneralView = modernCommentHeaderGeneralClass);
         }
 
         Class commentHeaderGoodsClass = objc_getClass("AWECommentPanelHeaderSwiftImpl.CommentHeaderGoodsView");
         if (!commentHeaderGoodsClass) {
             commentHeaderGoodsClass = objc_getClass("AWECommentCommerceSwiftImpl.CommentHeaderGoodsView");
         }
-        if (commentHeaderGoodsClass) {
+        if (commentHeaderGoodsClass && class_getInstanceMethod(commentHeaderGoodsClass, @selector(layoutSubviews))) {
             %init(CommentHeaderGoodsGroup, AWECommentPanelHeaderSwiftImpl_CommentHeaderGoodsView = commentHeaderGoodsClass);
         }
+        Class modernCommentHeaderGoodsClass = objc_getClass("_TtC27AWECommentCommerceSwiftImpl22CommentHeaderGoodsView");
+        if (modernCommentHeaderGoodsClass && class_getInstanceMethod(modernCommentHeaderGoodsClass, @selector(layoutSubviews))) {
+            %init(CommentCommerceHeaderGoodsGroup, _TtC27AWECommentCommerceSwiftImpl22CommentHeaderGoodsView = modernCommentHeaderGoodsClass);
+        }
         Class commentHeaderTemplateClass = objc_getClass("AWECommentPanelHeaderSwiftImpl.CommentHeaderTemplateAnchorView");
-        if (commentHeaderTemplateClass) {
+        if (commentHeaderTemplateClass && class_getInstanceMethod(commentHeaderTemplateClass, @selector(layoutSubviews))) {
             %init(CommentHeaderTemplateGroup, AWECommentPanelHeaderSwiftImpl_CommentHeaderTemplateAnchorView = commentHeaderTemplateClass);
         }
 
         Class tipsVCClass = objc_getClass("AWECommentPanelListSwiftImpl.CommentBottomTipsContainerViewController");
-        if (tipsVCClass) {
+        if (tipsVCClass && class_getInstanceMethod(tipsVCClass, @selector(viewWillAppear:))) {
             %init(CommentBottomTipsVCGroup, AWECommentPanelListSwiftImpl_CommentBottomTipsContainerViewController = tipsVCClass);
         }
 

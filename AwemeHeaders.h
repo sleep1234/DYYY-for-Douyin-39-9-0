@@ -641,6 +641,20 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface _TtC21AWEIncentiveSwiftImpl29IncentivePendantContainerView : UIView
 @end
 
+// 抖音 40.7.0 激励挂件容器（Swift runtime mangled 名称）
+@interface _TtC21AWEIncentiveSwiftImpl20PendantContainerView : UIView
+@end
+
+// 抖音 40.7.0 评论商业组件（Swift runtime mangled 名称）
+@interface _TtC27AWECommentCommerceSwiftImpl24CommentHeaderGeneralView : UIView
+@end
+@interface _TtC27AWECommentCommerceSwiftImpl22CommentHeaderGoodsView : UIView
+@end
+
+// 抖音 40.7.0 图文内容容器（Swift runtime mangled 名称）
+@interface _TtC23BDMultiContentContainer11OverlayView : UIView
+@end
+
 @interface AWECommentLongPressPanelSwiftImpl_CommentLongPressPanelReportElement : NSObject
 - (AWECommentLongPressPanelContext *)commentPageContext;
 - (BOOL)elementShouldShow;
@@ -1355,6 +1369,14 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEIMCommentShareUserHorizontalCollectionViewCell : UIView
+@end
+
+// 抖音 40.7.0 评论分享组件
+@interface AWECommentShareContainerCell : UIView
+@end
+@interface AWECommentShareSectionController : NSObject
+- (CGSize)sizeForItemAtIndex:(NSInteger)index model:(id)model collectionViewSize:(CGSize)size;
+- (void)configCell:(id)cell index:(NSInteger)index model:(id)model;
 @end
 
 @interface AWENormalModeTabBarFeedView : UIView
