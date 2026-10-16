@@ -125,6 +125,24 @@ jobs:
           path: ci-logs/*.log
           if-no-files-found: warn
              
+      - name: Report rootful compiler diagnostics
+        if: always()
+        shell: bash
+        run: |
+          if [ -s ci-logs/rootful.log ]; then
+            {
+              echo '## Rootful compiler output'
+              echo '```text'
+              tail -120 ci-logs/rootful.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              case "$line" in
+                *error:*|*fatal:*|*make:*) echo "::error::${line:0:900}" ;;
+              esac
+            done < ci-logs/rootful.log
+          fi
+
       - name: Build Rootless
         run: |
           #make package FINALPACKAGE=1 -j$(sysctl -n hw.ncpu)
