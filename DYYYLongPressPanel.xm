@@ -1483,9 +1483,9 @@
     %orig;
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentShareToFriends"]) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
     } else {
-        self.hidden = NO;
+        ((UIView *)self).hidden = NO;
     }
 }
 
@@ -1519,7 +1519,7 @@
 - (void)layoutSubviews {
     %orig;
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentShareToFriends"]) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
     }
 }
 
