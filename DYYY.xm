@@ -11256,7 +11256,9 @@ static Class tabBarButtonClass = nil;
     }
 
     if (isPlayVC && enableFS) {
-        if (frame.origin.x != 0 && frame.origin.y != 0) {
+        // 仅扩展从父视图原点开始的播放器视图。主页详情页可能从 tabbar 高度处起始；
+        // 只要原点任一坐标非零，就必须保留系统 frame，否则会同时露出上一条并裁切当前视频。
+        if (fabs(frame.origin.x) > 0.5 || fabs(frame.origin.y) > 0.5) {
             %orig(frame);
             return;
         }
