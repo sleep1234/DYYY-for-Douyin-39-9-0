@@ -12280,11 +12280,28 @@ static Class TagViewClass = nil;
     if ([self.subviews count] == 2)
         return;
 
-    // 获取 enableEnterProfile 属性来判断是否是主页
-    id enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
-    BOOL isHome = (enableEnterProfile != nil && [enableEnterProfile boolValue]);
+    // 先区分作者主页与首页 Feed。诊断日志显示作者主页翻页容器同样可能
+    // enableEnterProfile=YES；若只依赖该属性，会把媒体单元格高度改成视口高度而留下裁切。
+    BOOL isAuthorProfile = NO;
+    UIResponder *responder = self;
+    while ((responder = [responder nextResponder])) {
+        NSString *className = NSStringFromClass([responder class]);
+        if ([className containsString:@"UserHomeViewController"] || [className containsString:@"ProfileViewController"]) {
+            isAuthorProfile = YES;
+            break;
+        }
+    }
+    if (isAuthorProfile) {
+        return;
+    }
 
-    // 作者主页作品网格由抖音自身布局管理；本 Hook 只调整首页 Feed cell。
+    id enableEnterProfile = nil;
+    @try {
+        enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
+    } @catch (__unused NSException *exception) {
+        enableEnterProfile = nil;
+    }
+    BOOL isHome = (enableEnterProfile != nil && [enableEnterProfile boolValue]);
     if (!isHome)
         return;
 
