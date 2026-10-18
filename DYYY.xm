@@ -12266,10 +12266,12 @@ static Class TagViewClass = nil;
             objc_setAssociatedObject(self, &kDYYYProfileLayoutDiagnosticStateKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             UIView *first = self.subviews.count > 0 ? self.subviews[0] : nil;
             UIView *second = self.subviews.count > 1 ? self.subviews[1] : nil;
+            UIScrollView *scrollView = [self isKindOfClass:[UIScrollView class]] ? (UIScrollView *)self : nil;
             NSLog(@"[DYYYLayoutDiag] phase=profile-pager class=%@ frame=(%.1f,%.1f,%.1f,%.1f) bounds=(%.1f,%.1f,%.1f,%.1f) offset=(%.1f,%.1f) contentSize=(%.1f,%.1f) clips=%d count=%lu first=%@(%.1f,%.1f,%.1f,%.1f) second=%@ (%.1f,%.1f,%.1f,%.1f)",
                   NSStringFromClass([self class]), self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
                   self.bounds.origin.x, self.bounds.origin.y, self.bounds.size.width, self.bounds.size.height,
-                  self.contentOffset.x, self.contentOffset.y, self.contentSize.width, self.contentSize.height, self.clipsToBounds,
+                  scrollView ? scrollView.contentOffset.x : 0.0, scrollView ? scrollView.contentOffset.y : 0.0,
+                  scrollView ? scrollView.contentSize.width : 0.0, scrollView ? scrollView.contentSize.height : 0.0, self.clipsToBounds,
                   (unsigned long)self.subviews.count, NSStringFromClass([first class]), first.frame.origin.x, first.frame.origin.y, first.frame.size.width, first.frame.size.height,
                   NSStringFromClass([second class]), second.frame.origin.x, second.frame.origin.y, second.frame.size.width, second.frame.size.height);
         }
