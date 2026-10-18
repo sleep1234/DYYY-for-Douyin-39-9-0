@@ -42,6 +42,8 @@ static CGFloat originalTabBarHeight = kInvalidHeight;
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static char kDYYYGlobalTransparencyBaseAlphaKey;
+static char kDYYYProfileLayoutDiagnosticStateKey;
+static char kDYYYPlayerFrameDiagnosticStateKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
 
 static void updateGlobalTransparencyCache() {
@@ -11248,20 +11250,40 @@ static Class tabBarButtonClass = nil;
     BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
-    if (isPlayVC && enableBlur) {
-        if (frame.origin.x != 0) {
+    CGRect previousFrame = self.frame;
+    BOOL shouldTraceFrame = isPlayVC &&
+                            (fabs(previousFrame.origin.x - frame.origin.x) > 0.5 ||
+                             fabs(previousFrame.origin.y - frame.origin.y) > 0.5 ||
+                             fabs(previousFrame.size.width - frame.size.width) > 0.5 ||
+                             fabs(previousFrame.size.height - frame.size.height) > 0.5);
+    NSNumber *lastPlayerFrameLogTime = objc_getAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey);
+    CFTimeInterval frameDiagNow = CACurrentMediaTime();
+    BOOL shouldEmitFrameLog = shouldTraceFrame && (!lastPlayerFrameLogTime || frameDiagNow - lastPlayerFrameLogTime.doubleValue >= 0.10);
+    if (shouldEmitFrameLog) {
+        objc_setAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey, @(frameDiagNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    void (^traceFrame)(NSString *) = ^(NSString *phase) {
+        if (!shouldEmitFrameLog) {
             return;
         }
+        UIView *parent = self.superview;
+        NSLog(@"[DYYYFrameDiag] phase=%@ view=%@ vc=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
+              phase, NSStringFromClass([self class]), NSStringFromClass([vc class]),
+              previousFrame.origin.x, previousFrame.origin.y, previousFrame.size.width, previousFrame.size.height,
+              frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+              self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
+              parent.frame.origin.x, parent.frame.origin.y, parent.frame.size.width, parent.frame.size.height,
+              parent.bounds.origin.x, parent.bounds.origin.y, parent.bounds.size.width, parent.bounds.size.height,
+              parent.clipsToBounds, self.hidden, enableFS, enableBlur, gCurrentTabBarHeight);
+    };
+    traceFrame(@"before");
+
+    if (isPlayVC && enableBlur && frame.origin.x != 0) {
+        traceFrame(@"before-blur-return");
+        return;
     }
 
-    if (isPlayVC && enableFS) {
-        // 仅扩展从父视图原点开始的播放器视图。主页详情页可能从 tabbar 高度处起始；
-        // 只要原点任一坐标非零，就必须保留系统 frame，否则会同时露出上一条并裁切当前视频。
-        if (fabs(frame.origin.x) > 0.5 || fabs(frame.origin.y) > 0.5) {
-            %orig(frame);
-            return;
-        }
+    if (isPlayVC && enableFS && (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
         CGRect superF = self.superview.frame;
         if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
             CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
@@ -11269,11 +11291,10 @@ static Class tabBarButtonClass = nil;
                 frame.size.height = CGRectGetHeight(superF);
             }
         }
-
-        %orig(frame);
-        return;
     }
+
     %orig(frame);
+    traceFrame(@"after");
 }
 
 %new
@@ -12230,6 +12251,30 @@ static Class TagViewClass = nil;
 %hook AWEStoryContainerCollectionView
 - (void)layoutSubviews {
     %orig;
+
+    // 临时诊断：采样作者主页作品翻页容器几何，限制日志频率避免刷屏。
+    id profileFlag = nil;
+    @try {
+        profileFlag = [self valueForKey:@"enableEnterProfile"];
+    } @catch (__unused NSException *exception) {
+        profileFlag = nil;
+    }
+    if (profileFlag && [profileFlag boolValue]) {
+        CFTimeInterval now = CACurrentMediaTime();
+        NSNumber *lastLogTime = objc_getAssociatedObject(self, &kDYYYProfileLayoutDiagnosticStateKey);
+        if (!lastLogTime || now - lastLogTime.doubleValue >= 0.20) {
+            objc_setAssociatedObject(self, &kDYYYProfileLayoutDiagnosticStateKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            UIView *first = self.subviews.count > 0 ? self.subviews[0] : nil;
+            UIView *second = self.subviews.count > 1 ? self.subviews[1] : nil;
+            NSLog(@"[DYYYLayoutDiag] phase=profile-pager class=%@ frame=(%.1f,%.1f,%.1f,%.1f) bounds=(%.1f,%.1f,%.1f,%.1f) offset=(%.1f,%.1f) contentSize=(%.1f,%.1f) clips=%d count=%lu first=%@(%.1f,%.1f,%.1f,%.1f) second=%@ (%.1f,%.1f,%.1f,%.1f)",
+                  NSStringFromClass([self class]), self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
+                  self.bounds.origin.x, self.bounds.origin.y, self.bounds.size.width, self.bounds.size.height,
+                  self.contentOffset.x, self.contentOffset.y, self.contentSize.width, self.contentSize.height, self.clipsToBounds,
+                  (unsigned long)self.subviews.count, NSStringFromClass([first class]), first.frame.origin.x, first.frame.origin.y, first.frame.size.width, first.frame.size.height,
+                  NSStringFromClass([second class]), second.frame.origin.x, second.frame.origin.y, second.frame.size.width, second.frame.size.height);
+        }
+    }
+
     if ([self.subviews count] == 2)
         return;
 
