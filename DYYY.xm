@@ -11267,7 +11267,7 @@ static Class tabBarButtonClass = nil;
             return;
         }
         UIView *parent = self.superview;
-        NSLog(@"[DYYYFrameDiag] phase=%@ view=%@ vc=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
+        DYYYNSLog(@"[DYYYFrameDiag] phase=%@ view=%@ vc=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
               phase, NSStringFromClass([self class]), NSStringFromClass([vc class]),
               previousFrame.origin.x, previousFrame.origin.y, previousFrame.size.width, previousFrame.size.height,
               frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
@@ -12267,7 +12267,7 @@ static Class TagViewClass = nil;
             UIView *first = self.subviews.count > 0 ? self.subviews[0] : nil;
             UIView *second = self.subviews.count > 1 ? self.subviews[1] : nil;
             UIScrollView *scrollView = [self isKindOfClass:[UIScrollView class]] ? (UIScrollView *)self : nil;
-            NSLog(@"[DYYYLayoutDiag] phase=profile-pager class=%@ frame=(%.1f,%.1f,%.1f,%.1f) bounds=(%.1f,%.1f,%.1f,%.1f) offset=(%.1f,%.1f) contentSize=(%.1f,%.1f) clips=%d count=%lu first=%@(%.1f,%.1f,%.1f,%.1f) second=%@ (%.1f,%.1f,%.1f,%.1f)",
+            DYYYNSLog(@"[DYYYLayoutDiag] phase=profile-pager class=%@ frame=(%.1f,%.1f,%.1f,%.1f) bounds=(%.1f,%.1f,%.1f,%.1f) offset=(%.1f,%.1f) contentSize=(%.1f,%.1f) clips=%d count=%lu first=%@(%.1f,%.1f,%.1f,%.1f) second=%@ (%.1f,%.1f,%.1f,%.1f)",
                   NSStringFromClass([self class]), self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
                   self.bounds.origin.x, self.bounds.origin.y, self.bounds.size.width, self.bounds.size.height,
                   scrollView ? scrollView.contentOffset.x : 0.0, scrollView ? scrollView.contentOffset.y : 0.0,

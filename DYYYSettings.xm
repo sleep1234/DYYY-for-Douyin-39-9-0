@@ -1090,8 +1090,8 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           },
           @{
               @"identifier" : @"DYYYExportLogs",
-              @"title" : @"导出日志",
-              @"subTitle" : @"一键导出运行日志到文档目录",
+              @"title" : @"分享视频布局诊断日志",
+              @"subTitle" : @"复现作者主页视频错位后，点此分享诊断记录",
               @"detail" : @"",
               @"cellType" : @26,
               @"imageName" : @"ic_share_outlined_20"
@@ -1194,7 +1194,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               item.cellTappedBlock = ^{
                 UIViewController *topVC = [DYYYUtils topView];
                 if (topVC) {
-                  [DYYYUtils shareLogsToViewController:topVC];
+                  [DYYYUtils shareProfileLayoutDiagnosticsToViewController:topVC];
                 } else {
                   [DYYYUtils showToast:@"无法获取当前视图控制器"];
                 }

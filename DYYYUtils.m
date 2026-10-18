@@ -32,6 +32,15 @@
 static const void *kLabelColorStateKey = &kLabelColorStateKey;
 static const NSTimeInterval kDYYYUtilsDefaultFrameDelay = 0.1f;
 
+static dispatch_queue_t DYYYRuntimeLogQueue(void) {
+    static dispatch_queue_t logQueue = nil;
+    static dispatch_once_t queueOnceToken;
+    dispatch_once(&queueOnceToken, ^{
+      logQueue = dispatch_queue_create("com.dyyy.runtime-log.queue", DISPATCH_QUEUE_SERIAL);
+    });
+    return logQueue;
+}
+
 static NSString *DYYYRuntimeLogFilePath(void) {
     static NSString *logPath = nil;
     static dispatch_once_t onceToken;
@@ -74,13 +83,7 @@ void DYYYNSLog(NSString *format, ...) {
         fflush(stderr);
     }
 
-    static dispatch_queue_t logQueue = nil;
-    static dispatch_once_t queueOnceToken;
-    dispatch_once(&queueOnceToken, ^{
-      logQueue = dispatch_queue_create("com.dyyy.runtime-log.queue", DISPATCH_QUEUE_SERIAL);
-    });
-
-    dispatch_async(logQueue, ^{
+    dispatch_async(DYYYRuntimeLogQueue(), ^{
       @autoreleasepool {
           NSString *line = [NSString stringWithFormat:@"[%@][pid:%d] %@\n", [NSDate date], getpid(), message];
           NSData *lineData = [line dataUsingEncoding:NSUTF8StringEncoding];
@@ -408,6 +411,89 @@ static const void *kCurrentIPRequestCityCodeKey = &kCurrentIPRequestCityCodeKey;
         return nil;
     }
     return exportPath;
+}
+
++ (void)shareProfileLayoutDiagnosticsToViewController:(nullable UIViewController *)topVC {
+    if (!topVC) {
+        [DYYYUtils showToast:@"无法获取当前视图控制器"];
+        return;
+    }
+    __block NSData *logData = nil;
+    // 排在已提交的日志写入之后，并仅读取末尾 2 MiB，避免大日志导致内存峰值或长时间阻塞。
+    dispatch_sync(DYYYRuntimeLogQueue(), ^{
+      NSString *logPath = DYYYRuntimeLogFilePath();
+      NSFileHandle *handle = [NSFileHandle fileHandleForReadingAtPath:logPath];
+      if (!handle) {
+          return;
+      }
+      @try {
+          unsigned long long fileSize = [handle seekToEndOfFile];
+          unsigned long long tailLength = MIN(fileSize, 2ULL * 1024ULL * 1024ULL);
+          [handle seekToFileOffset:fileSize - tailLength];
+          logData = [handle readDataToEndOfFile];
+      } @catch (__unused NSException *exception) {
+          logData = nil;
+      }
+      [handle closeFile];
+    });
+    if (logData.length == 0) {
+        [DYYYUtils showToast:@"没有诊断日志，请先从作者主页打开视频并等待画面异常后再分享"];
+        return;
+    }
+
+    // 2 MiB 截断点可能落在一条 UTF-8 日志行中间；跳过首个不完整行后再严格解码。
+    const uint8_t *bytes = logData.bytes;
+    NSUInteger firstNewline = NSNotFound;
+    for (NSUInteger index = 0; index < logData.length; index++) {
+        if (bytes[index] == (uint8_t)'\n') {
+            firstNewline = index;
+            break;
+        }
+    }
+    if (firstNewline != NSNotFound && firstNewline + 1 < logData.length) {
+        logData = [logData subdataWithRange:NSMakeRange(firstNewline + 1, logData.length - firstNewline - 1)];
+    }
+    NSString *allLogs = [[NSString alloc] initWithData:logData encoding:NSUTF8StringEncoding];
+    if (allLogs.length == 0) {
+        [DYYYUtils showToast:@"诊断日志格式无效，请重新复现后再分享"];
+        return;
+    }
+    NSMutableArray<NSString *> *diagnosticLines = [NSMutableArray array];
+    for (NSString *line in [allLogs componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+        if ([line containsString:@"[DYYYFrameDiag]"] || [line containsString:@"[DYYYLayoutDiag]"]) {
+            [diagnosticLines addObject:line];
+        }
+    }
+    if (diagnosticLines.count == 0) {
+        [DYYYUtils showToast:@"未找到布局诊断记录，请确认已安装诊断包并复现问题"];
+        return;
+    }
+
+    NSString *exportDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    exportDir = [exportDir stringByAppendingPathComponent:@"DYYYLogs"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:exportDir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyyMMdd_HHmmss";
+    NSString *timestamp = [formatter stringFromDate:[NSDate date]];
+    NSString *exportPath = [exportDir stringByAppendingPathComponent:[NSString stringWithFormat:@"profile_layout_%@.txt", timestamp]];
+    NSString *header = [NSString stringWithFormat:@"DYYY 作者主页视频布局诊断\n导出时间：%@\n记录行数：%lu\n\n", timestamp, (unsigned long)diagnosticLines.count];
+    NSMutableString *exportText = [header mutableCopy];
+    [exportText appendString:[diagnosticLines componentsJoinedByString:@"\n"]];
+    [exportText appendString:@"\n"];
+    NSError *error = nil;
+    if (![exportText writeToFile:exportPath atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        [DYYYUtils showToast:[NSString stringWithFormat:@"写入诊断日志失败：%@", error.localizedDescription ?: @"未知错误"]];
+        return;
+    }
+
+    UIActivityViewController *activityVC = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:exportPath]] applicationActivities:nil];
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad && activityVC.popoverPresentationController) {
+        activityVC.popoverPresentationController.sourceView = topVC.view;
+        CGRect bounds = topVC.view.bounds;
+        activityVC.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds), 1, 1);
+        activityVC.popoverPresentationController.permittedArrowDirections = UIPopoverArrowDirectionAny;
+    }
+    [topVC presentViewController:activityVC animated:YES completion:nil];
 }
 
 + (void)shareLogsToViewController:(nullable UIViewController *)topVC {
