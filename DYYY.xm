@@ -12235,18 +12235,8 @@ static Class TagViewClass = nil;
     id enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
     BOOL isHome = (enableEnterProfile != nil && [enableEnterProfile boolValue]);
 
-    // 检查是否在作者主页
-    BOOL isAuthorProfile = NO;
-    UIResponder *responder = self;
-    while ((responder = [responder nextResponder])) {
-        if ([NSStringFromClass([responder class]) containsString:@"UserHomeViewController"] || [NSStringFromClass([responder class]) containsString:@"ProfileViewController"]) {
-            isAuthorProfile = YES;
-            break;
-        }
-    }
-
-    // 如果不是主页也不是作者主页，直接返回
-    if (!isHome && !isAuthorProfile)
+    // 作者主页作品网格由抖音自身布局管理；本 Hook 只调整首页 Feed cell。
+    if (!isHome)
         return;
 
     for (UIView *subview in self.subviews) {
@@ -12263,26 +12253,6 @@ static Class TagViewClass = nil;
                 CGRect frame = subview.frame;
                 if (DYYYGetBool(@"DYYYEnableFullScreen")) {
                     frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
-                    subview.frame = frame;
-                }
-            }
-            // 处理作者主页的情况
-            else if (isAuthorProfile) {
-                // 检查是否是作品图片
-                BOOL isWorkImage = NO;
-
-                // 可以通过检查子视图、标签或其他特性来确定是否是作品图片
-                for (UIView *childView in subview.subviews) {
-                    if ([NSStringFromClass([childView class]) containsString:@"ImageView"] || [NSStringFromClass([childView class]) containsString:@"ThumbnailView"]) {
-                        isWorkImage = YES;
-                        break;
-                    }
-                }
-
-                if (isWorkImage) {
-                    // 修复作者主页作品图片上移问题
-                    CGRect frame = subview.frame;
-                    frame.origin.y += gCurrentTabBarHeight;
                     subview.frame = frame;
                 }
             }
