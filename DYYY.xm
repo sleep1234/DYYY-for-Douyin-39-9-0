@@ -11404,6 +11404,19 @@ static Class tabBarButtonClass = nil;
         count++;
     }
 
+    // 作者主页的视频播放控制器也会进入这里，但不能套用首页 Feed 的
+    // “父视图高度减 TabBar”规则；最新诊断显示该规则正把 932 高压成 849 高。
+    UIViewController *profileParentVC = self.parentViewController;
+    count = 0;
+    while (profileParentVC && count < 8) {
+        NSString *className = NSStringFromClass([profileParentVC class]);
+        if ([className containsString:@"UserHomeViewController"] || [className containsString:@"ProfileViewController"]) {
+            return;
+        }
+        profileParentVC = profileParentVC.parentViewController;
+        count++;
+    }
+
     if (!self.view.superview) {
         return;
     }
