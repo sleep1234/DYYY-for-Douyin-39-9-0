@@ -47,6 +47,16 @@ static char kDYYYPlayerFrameDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticCountKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
+static NSUInteger gDYYYGeometryDiagnosticRecordCount = 0;
+static const NSUInteger kDYYYGeometryDiagnosticRecordLimit = 500;
+
+static BOOL DYYYConsumeGeometryDiagnosticRecord(void) {
+    if (gDYYYGeometryDiagnosticRecordCount >= kDYYYGeometryDiagnosticRecordLimit) {
+        return NO;
+    }
+    gDYYYGeometryDiagnosticRecordCount++;
+    return YES;
+}
 
 static NSString *DYYYDiagnosticViewControllerChain(UIViewController *controller) {
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
@@ -65,7 +75,7 @@ static NSString *DYYYDiagnosticSuperviewChain(UIView *view) {
     while (view && depth < 12) {
         CGRect frame = view.frame;
         [parts addObject:[NSString stringWithFormat:@"%@@%p(%.1f,%.1f,%.1f,%.1f)",
-                          NSStringFromClass([view class]), (void *)view,
+                          NSStringFromClass([view class]), (__bridge void *)view,
                           frame.origin.x, frame.origin.y, frame.size.width, frame.size.height]];
         view = view.superview;
         depth++;
@@ -11299,7 +11309,7 @@ static Class tabBarButtonClass = nil;
                              fabs(previousFrame.size.height - frame.size.height) > 0.5);
     NSNumber *lastPlayerFrameLogTime = objc_getAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey);
     CFTimeInterval frameDiagNow = CACurrentMediaTime();
-    BOOL shouldEmitFrameLog = shouldTraceFrame && (!lastPlayerFrameLogTime || frameDiagNow - lastPlayerFrameLogTime.doubleValue >= 0.10);
+    BOOL shouldEmitFrameLog = shouldTraceFrame && (!lastPlayerFrameLogTime || frameDiagNow - lastPlayerFrameLogTime.doubleValue >= 0.10) && DYYYConsumeGeometryDiagnosticRecord();
     if (shouldEmitFrameLog) {
         objc_setAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey, @(frameDiagNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -11317,7 +11327,7 @@ static Class tabBarButtonClass = nil;
             stackText = [[stack subarrayWithRange:NSMakeRange(0, stackCount)] componentsJoinedByString:@"|"];
         }
         DYYYNSLog(@"[DYYYFrameDiag] phase=%@ view=%@ ptr=%p vc=%@ vcChain=%@ pager=%d stack=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
-              phase, NSStringFromClass([self class]), (void *)self, NSStringFromClass([vc class]), DYYYDiagnosticViewControllerChain(vc), hasStoryPager, stackText,
+              phase, NSStringFromClass([self class]), (__bridge void *)self, NSStringFromClass([vc class]), DYYYDiagnosticViewControllerChain(vc), hasStoryPager, stackText,
               previousFrame.origin.x, previousFrame.origin.y, previousFrame.size.width, previousFrame.size.height,
               frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
               self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
@@ -11427,14 +11437,15 @@ static Class tabBarButtonClass = nil;
     NSNumber *lastInteractionDiag = objc_getAssociatedObject(self, &kDYYYInteractionDiagnosticStateKey);
     NSNumber *interactionDiagCount = objc_getAssociatedObject(self, &kDYYYInteractionDiagnosticCountKey);
     BOOL emitInteractionDiag = (!interactionDiagCount || interactionDiagCount.unsignedIntegerValue < 40) &&
-                               (!lastInteractionDiag || interactionDiagNow - lastInteractionDiag.doubleValue >= 0.20);
+                               (!lastInteractionDiag || interactionDiagNow - lastInteractionDiag.doubleValue >= 0.20) &&
+                               DYYYConsumeGeometryDiagnosticRecord();
     if (emitInteractionDiag) {
         objc_setAssociatedObject(self, &kDYYYInteractionDiagnosticStateKey, @(interactionDiagNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self, &kDYYYInteractionDiagnosticCountKey,
                                  @((interactionDiagCount ? interactionDiagCount.unsignedIntegerValue : 0) + 1),
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         DYYYNSLog(@"[DYYYInteractionDiag] entry self=%p view=%p viewFrame=(%.1f,%.1f,%.1f,%.1f) viewSuper=%@ refer=%@ modelRefer=%@ vcChain=%@ pager=%d fs=%d",
-                  (void *)self, (void *)self.view,
+                  (__bridge void *)self, (__bridge void *)self.view,
                   self.view.frame.origin.x, self.view.frame.origin.y, self.view.frame.size.width, self.view.frame.size.height,
                   DYYYDiagnosticSuperviewChain(self.view), self.referString ?: @"(nil)", self.model.referString ?: @"(nil)",
                   DYYYDiagnosticViewControllerChain(self), DYYYViewHasStoryPagerAncestor(self.view), DYYYGetBool(@"DYYYEnableFullScreen"));
@@ -12364,7 +12375,7 @@ static Class TagViewClass = nil;
     if (profileFlag && [profileFlag boolValue]) {
         CFTimeInterval now = CACurrentMediaTime();
         NSNumber *lastLogTime = objc_getAssociatedObject(self, &kDYYYProfileLayoutDiagnosticStateKey);
-        if (!lastLogTime || now - lastLogTime.doubleValue >= 0.20) {
+        if ((!lastLogTime || now - lastLogTime.doubleValue >= 0.20) && DYYYConsumeGeometryDiagnosticRecord()) {
             objc_setAssociatedObject(self, &kDYYYProfileLayoutDiagnosticStateKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             UIView *first = self.subviews.count > 0 ? self.subviews[0] : nil;
             UIView *second = self.subviews.count > 1 ? self.subviews[1] : nil;
