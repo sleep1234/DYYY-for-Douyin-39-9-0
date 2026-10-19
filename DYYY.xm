@@ -44,7 +44,48 @@ static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlob
 static char kDYYYGlobalTransparencyBaseAlphaKey;
 static char kDYYYProfileLayoutDiagnosticStateKey;
 static char kDYYYPlayerFrameDiagnosticStateKey;
+static char kDYYYInteractionDiagnosticStateKey;
+static char kDYYYInteractionDiagnosticCountKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
+
+static NSString *DYYYDiagnosticViewControllerChain(UIViewController *controller) {
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    NSUInteger depth = 0;
+    while (controller && depth < 10) {
+        [parts addObject:NSStringFromClass([controller class]) ?: @"(null)"];
+        controller = controller.parentViewController;
+        depth++;
+    }
+    return parts.count > 0 ? [parts componentsJoinedByString:@"<-"] : @"(none)";
+}
+
+static NSString *DYYYDiagnosticSuperviewChain(UIView *view) {
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    NSUInteger depth = 0;
+    while (view && depth < 12) {
+        CGRect frame = view.frame;
+        [parts addObject:[NSString stringWithFormat:@"%@@%p(%.1f,%.1f,%.1f,%.1f)",
+                          NSStringFromClass([view class]), (void *)view,
+                          frame.origin.x, frame.origin.y, frame.size.width, frame.size.height]];
+        view = view.superview;
+        depth++;
+    }
+    return parts.count > 0 ? [parts componentsJoinedByString:@"<-"] : @"(none)";
+}
+
+static BOOL DYYYViewHasStoryPagerAncestor(UIView *view) {
+    UIView *ancestor = view;
+    NSUInteger depth = 0;
+    while (ancestor && depth < 20) {
+        Class pagerClass = NSClassFromString(@"AWEStoryContainerCollectionView");
+        if (pagerClass && [ancestor isKindOfClass:pagerClass]) {
+            return YES;
+        }
+        ancestor = ancestor.superview;
+        depth++;
+    }
+    return NO;
+}
 
 static void updateGlobalTransparencyCache() {
     NSString *transparentValue = DYYYGetString(kDYYYGlobalTransparencyKey);
@@ -11267,8 +11308,16 @@ static Class tabBarButtonClass = nil;
             return;
         }
         UIView *parent = self.superview;
-        DYYYNSLog(@"[DYYYFrameDiag] phase=%@ view=%@ vc=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
-              phase, NSStringFromClass([self class]), NSStringFromClass([vc class]),
+        BOOL hasStoryPager = DYYYViewHasStoryPagerAncestor(self);
+        BOOL isSuspiciousProfileResize = fabs(previousFrame.size.height - 932.0) < 0.5 && fabs(frame.size.height - 849.0) < 0.5;
+        NSString *stackText = @"(not-captured)";
+        if (isSuspiciousProfileResize) {
+            NSArray *stack = [NSThread callStackSymbols];
+            NSUInteger stackCount = MIN((NSUInteger)8, stack.count);
+            stackText = [[stack subarrayWithRange:NSMakeRange(0, stackCount)] componentsJoinedByString:@"|"];
+        }
+        DYYYNSLog(@"[DYYYFrameDiag] phase=%@ view=%@ ptr=%p vc=%@ vcChain=%@ pager=%d stack=%@ old=(%.1f,%.1f,%.1f,%.1f) requested=(%.1f,%.1f,%.1f,%.1f) actual=(%.1f,%.1f,%.1f,%.1f) parentFrame=(%.1f,%.1f,%.1f,%.1f) parentBounds=(%.1f,%.1f,%.1f,%.1f) clips=%d hidden=%d fs=%d blur=%d tab=%.1f",
+              phase, NSStringFromClass([self class]), (void *)self, NSStringFromClass([vc class]), DYYYDiagnosticViewControllerChain(vc), hasStoryPager, stackText,
               previousFrame.origin.x, previousFrame.origin.y, previousFrame.size.width, previousFrame.size.height,
               frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
               self.frame.origin.x, self.frame.origin.y, self.frame.size.width, self.frame.size.height,
@@ -11374,6 +11423,23 @@ static Class tabBarButtonClass = nil;
 - (void)viewDidLayoutSubviews {
     %orig;
 
+    CFTimeInterval interactionDiagNow = CACurrentMediaTime();
+    NSNumber *lastInteractionDiag = objc_getAssociatedObject(self, &kDYYYInteractionDiagnosticStateKey);
+    NSNumber *interactionDiagCount = objc_getAssociatedObject(self, &kDYYYInteractionDiagnosticCountKey);
+    BOOL emitInteractionDiag = (!interactionDiagCount || interactionDiagCount.unsignedIntegerValue < 40) &&
+                               (!lastInteractionDiag || interactionDiagNow - lastInteractionDiag.doubleValue >= 0.20);
+    if (emitInteractionDiag) {
+        objc_setAssociatedObject(self, &kDYYYInteractionDiagnosticStateKey, @(interactionDiagNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYInteractionDiagnosticCountKey,
+                                 @((interactionDiagCount ? interactionDiagCount.unsignedIntegerValue : 0) + 1),
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        DYYYNSLog(@"[DYYYInteractionDiag] entry self=%p view=%p viewFrame=(%.1f,%.1f,%.1f,%.1f) viewSuper=%@ refer=%@ modelRefer=%@ vcChain=%@ pager=%d fs=%d",
+                  (void *)self, (void *)self.view,
+                  self.view.frame.origin.x, self.view.frame.origin.y, self.view.frame.size.width, self.view.frame.size.height,
+                  DYYYDiagnosticSuperviewChain(self.view), self.referString ?: @"(nil)", self.model.referString ?: @"(nil)",
+                  DYYYDiagnosticViewControllerChain(self), DYYYViewHasStoryPagerAncestor(self.view), DYYYGetBool(@"DYYYEnableFullScreen"));
+    }
+
     if (self.view.window && !self.view.hidden) {
         DYYYEnsureFloatSpeedButton(self);
         reloadClearButtonConfiguration();
@@ -11388,6 +11454,29 @@ static Class tabBarButtonClass = nil;
     }
 
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
+    }
+
+    // 作者主页播放器不一定挂在名称含 Profile/UserHome 的控制器下；
+    // 但它会直接位于 AWEStoryContainerCollectionView 的分页单元格内。
+    // 以实际视图层级识别，避免把作者页误当首页 Feed 调整高度。
+    UIView *profilePagerAncestor = self.view;
+    while ((profilePagerAncestor = profilePagerAncestor.superview)) {
+        if ([profilePagerAncestor isKindOfClass:%c(AWEStoryContainerCollectionView)]) {
+            return;
+        }
+    }
+
+    NSString *currentReferString = [self.referString lowercaseString] ?: @"";
+    NSString *modelReferString = [self.model.referString lowercaseString] ?: @"";
+    BOOL referLooksLikeAuthorProfile =
+        [currentReferString containsString:@"profile"] ||
+        [currentReferString containsString:@"user_home"] ||
+        [currentReferString containsString:@"personal"] ||
+        [modelReferString containsString:@"profile"] ||
+        [modelReferString containsString:@"user_home"] ||
+        [modelReferString containsString:@"personal"];
+    if (referLooksLikeAuthorProfile) {
         return;
     }
 
@@ -11429,7 +11518,7 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    NSString *currentReferString = self.referString;
+    currentReferString = self.referString;
 
     BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
                          [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
