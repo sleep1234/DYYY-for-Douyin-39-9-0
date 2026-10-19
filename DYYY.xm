@@ -11337,11 +11337,6 @@ static Class tabBarButtonClass = nil;
     };
     traceFrame(@"before");
 
-    if (isPlayVC && enableBlur && frame.origin.x != 0) {
-        traceFrame(@"before-blur-return");
-        return;
-    }
-
     if (isPlayVC && enableFS && (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
         CGRect superF = self.superview.frame;
         if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
@@ -11484,9 +11479,13 @@ static Class tabBarButtonClass = nil;
         [currentReferString containsString:@"profile"] ||
         [currentReferString containsString:@"user_home"] ||
         [currentReferString containsString:@"personal"] ||
+        [currentReferString containsString:@"others_homepage"] ||
+        [currentReferString containsString:@"other_homepage"] ||
         [modelReferString containsString:@"profile"] ||
         [modelReferString containsString:@"user_home"] ||
-        [modelReferString containsString:@"personal"];
+        [modelReferString containsString:@"personal"] ||
+        [modelReferString containsString:@"others_homepage"] ||
+        [modelReferString containsString:@"other_homepage"];
     if (referLooksLikeAuthorProfile) {
         return;
     }
