@@ -12660,11 +12660,17 @@ static Class TagViewClass = nil;
 
 - (void)setFrame:(CGRect)frame {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-
-        CGFloat remainder = fmod(frame.size.height, screenHeight);
-        if (remainder != 0) {
-            frame.size.height += (screenHeight - remainder);
+        // 40.7 的 RichContent/AWEStory 横向分页以当前 viewport 高度布局。
+        // 旧的按屏幕高度取模会把 849 高的 detail table 强行扩到 932，
+        // 造成旧页与当前页的播放器在同一屏上下重叠；这类页面交给抖音原生布局。
+        Class pagerClass = %c(AWEStoryContainerCollectionView);
+        BOOL containsStoryPager = pagerClass && [DYYYUtils containsSubviewOfClass:pagerClass inContainer:self];
+        if (!containsStoryPager) {
+            CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+            CGFloat remainder = fmod(frame.size.height, screenHeight);
+            if (remainder != 0) {
+                frame.size.height += (screenHeight - remainder);
+            }
         }
     }
     %orig(frame);
