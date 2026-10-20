@@ -11748,6 +11748,36 @@ static Class tabBarButtonClass = nil;
                 contentView.frame = frame;
             }
         }
+
+        // RichContent 作者主页的 detail cell 可能让播放器中间 wrapper 保持 932 高，
+        // 而真正的 UITableViewCellContentView/AWEAwemeDetailTableViewCell 只有 849 高。
+        // 只在该 detail 控制器链路中裁剪最近的较矮边界，避免旧播放器图层从页顶露出。
+        UIViewController *detailParent = self.parentViewController;
+        BOOL isDetailPlayback = NO;
+        NSUInteger detailDepth = 0;
+        while (detailParent && detailDepth++ < 8) {
+            if ([NSStringFromClass([detailParent class]) containsString:@"AWEAwemeDetailCellViewController"]) {
+                isDetailPlayback = YES;
+                break;
+            }
+            detailParent = detailParent.parentViewController;
+        }
+        if (isDetailPlayback) {
+            CGFloat playerHeight = self.view.bounds.size.height;
+            UIView *ancestor = self.view.superview;
+            NSUInteger ancestorDepth = 0;
+            while (ancestor && ancestorDepth++ < 16) {
+                NSString *className = NSStringFromClass([ancestor class]);
+                BOOL isDetailBoundary = [className isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
+                                         [className isEqualToString:@"UITableViewCellContentView"];
+                if (isDetailBoundary && ancestor.bounds.size.height > 0.0 &&
+                    ancestor.bounds.size.height + 0.5 < playerHeight) {
+                    ancestor.clipsToBounds = YES;
+                    break;
+                }
+                ancestor = ancestor.superview;
+            }
+        }
     }
 }
 
