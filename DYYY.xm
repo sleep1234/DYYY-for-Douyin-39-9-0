@@ -46,6 +46,7 @@ static char kDYYYProfileLayoutDiagnosticStateKey;
 static char kDYYYPlayerFrameDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticCountKey;
+static char kDYYYDetailDiagnosticStateKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
 static NSUInteger gDYYYGeometryDiagnosticRecordCount = 0;
 static const NSUInteger kDYYYGeometryDiagnosticRecordLimit = 500;
@@ -95,6 +96,30 @@ static BOOL DYYYViewHasStoryPagerAncestor(UIView *view) {
         depth++;
     }
     return NO;
+}
+
+static NSString *DYYYDiagnosticSubviewSummary(UIView *view, NSUInteger depth, NSUInteger maxDepth) {
+    if (!view || depth > maxDepth) {
+        return @"";
+    }
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    CGRect frame = view.frame;
+    [parts addObject:[NSString stringWithFormat:@"%@%@@%p f=(%.1f,%.1f,%.1f,%.1f) b=(%.1f,%.1f,%.1f,%.1f) h=%d a=%.2f c=%d z=%.1f sub=%lu",
+                      [@"  " stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0],
+                      NSStringFromClass([view class]), (__bridge void *)view,
+                      frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                      view.bounds.origin.x, view.bounds.origin.y, view.bounds.size.width, view.bounds.size.height,
+                      view.hidden, view.alpha, view.clipsToBounds, view.layer.zPosition,
+                      (unsigned long)view.subviews.count]];
+    if (depth < maxDepth) {
+        for (UIView *child in view.subviews) {
+            NSString *childSummary = DYYYDiagnosticSubviewSummary(child, depth + 1, maxDepth);
+            if (childSummary.length > 0) {
+                [parts addObject:childSummary];
+            }
+        }
+    }
+    return [parts componentsJoinedByString:@"\\n"];
 }
 
 static void updateGlobalTransparencyCache() {
@@ -11734,6 +11759,44 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidLayoutSubviews {
     %orig;
+
+    UIViewController *detailDiagnosticParent = self.parentViewController;
+    BOOL isDetailDiagnosticPlayback = NO;
+    NSUInteger detailDiagnosticDepth = 0;
+    while (detailDiagnosticParent && detailDiagnosticDepth++ < 8) {
+        if ([NSStringFromClass([detailDiagnosticParent class]) containsString:@"AWEAwemeDetailCellViewController"]) {
+            isDetailDiagnosticPlayback = YES;
+            break;
+        }
+        detailDiagnosticParent = detailDiagnosticParent.parentViewController;
+    }
+    if (isDetailDiagnosticPlayback) {
+        CFTimeInterval detailDiagnosticNow = CACurrentMediaTime();
+        NSNumber *lastDetailDiagnostic = objc_getAssociatedObject(self, &kDYYYDetailDiagnosticStateKey);
+        if ((!lastDetailDiagnostic || detailDiagnosticNow - lastDetailDiagnostic.doubleValue >= 0.30) &&
+            DYYYConsumeGeometryDiagnosticRecord()) {
+            objc_setAssociatedObject(self, &kDYYYDetailDiagnosticStateKey, @(detailDiagnosticNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            UIView *ancestor = self.view;
+            NSMutableArray<NSString *> *ancestorParts = [NSMutableArray array];
+            NSUInteger ancestorDepth = 0;
+            while (ancestor && ancestorDepth++ < 12) {
+                CGRect frame = ancestor.frame;
+                [ancestorParts addObject:[NSString stringWithFormat:@"%@%@@%p f=(%.1f,%.1f,%.1f,%.1f) b=(%.1f,%.1f,%.1f,%.1f) clips=%d",
+                                          ancestorDepth == 1 ? @"" : @"<-",
+                                          NSStringFromClass([ancestor class]), (__bridge void *)ancestor,
+                                          frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                                          ancestor.bounds.origin.x, ancestor.bounds.origin.y, ancestor.bounds.size.width, ancestor.bounds.size.height,
+                                          ancestor.clipsToBounds]];
+                ancestor = ancestor.superview;
+            }
+            DYYYNSLog(@"[DYYYDetailDiag] player=%@ playerVC=%@ vcChain=%@ ancestors=%@ tree=\\n%@",
+                      NSStringFromClass([self.view class]), (__bridge void *)self.view,
+                      DYYYDiagnosticViewControllerChain(self),
+                      [ancestorParts componentsJoinedByString:@""],
+                      DYYYDiagnosticSubviewSummary(self.view, 0, 3));
+        }
+    }
+
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {

@@ -460,7 +460,7 @@ static const void *kCurrentIPRequestCityCodeKey = &kCurrentIPRequestCityCodeKey;
     }
     NSMutableArray<NSString *> *diagnosticLines = [NSMutableArray array];
     for (NSString *line in [allLogs componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
-        if ([line containsString:@"[DYYYFrameDiag]"] || [line containsString:@"[DYYYLayoutDiag]"] || [line containsString:@"[DYYYInteractionDiag]"]) {
+        if ([line containsString:@"[DYYYFrameDiag]"] || [line containsString:@"[DYYYLayoutDiag]"] || [line containsString:@"[DYYYInteractionDiag]"] || [line containsString:@"[DYYYDetailDiag]"]) {
             [diagnosticLines addObject:line];
         }
     }
