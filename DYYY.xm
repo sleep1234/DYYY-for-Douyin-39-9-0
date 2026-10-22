@@ -11826,8 +11826,18 @@ static Class tabBarButtonClass = nil;
             detailParent = detailParent.parentViewController;
         }
         if (isDetailPlayback) {
+            UIView *playerContainer = self.view.superview;
+            CGRect playerFrame = self.view.frame;
+            if (playerContainer && playerContainer.bounds.size.height > 0.0 &&
+                (CGRectGetMinY(playerFrame) < -0.5 || CGRectGetMaxY(playerFrame) > CGRectGetMaxY(playerContainer.bounds) + 0.5 ||
+                 CGRectGetMinX(playerFrame) < -0.5 || CGRectGetMaxX(playerFrame) > CGRectGetMaxX(playerContainer.bounds) + 0.5)) {
+                // 横向/纵向切换时播放器会暂时带负 y；当前 wrapper 明确为 849 高且 clips=0。
+                // 先裁剪这个实际过渡边界，防止旧视频从当前页顶部露出。
+                playerContainer.clipsToBounds = YES;
+            }
+
             CGFloat playerHeight = self.view.bounds.size.height;
-            UIView *ancestor = self.view.superview;
+            UIView *ancestor = playerContainer;
             NSUInteger ancestorDepth = 0;
             while (ancestor && ancestorDepth++ < 16) {
                 NSString *className = NSStringFromClass([ancestor class]);
