@@ -12492,6 +12492,32 @@ static Class TagViewClass = nil;
         }
     }
 
+    // 40.7 作者主页的 RichContent pager 在切换时可能暂时只有两个子视图，
+    // 但自身仍保留 932 高；它位于 849 高的 detail cell 内且 clips=1，
+    // 会把旧页上方的一条画面带到当前页。只对 detail cell 内的 pager
+    // 收敛到真实 cell 边界，首页 Feed 不走此分支。
+    BOOL isDetailPager = NO;
+    CGFloat detailPagerBoundaryHeight = 0.0;
+    UIView *detailPagerAncestor = self.superview;
+    NSUInteger detailPagerDepth = 0;
+    while (detailPagerAncestor && detailPagerDepth++ < 12) {
+        NSString *detailPagerClass = NSStringFromClass([detailPagerAncestor class]);
+        if ([detailPagerClass isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
+            [detailPagerClass isEqualToString:@"UITableViewCellContentView"]) {
+            isDetailPager = YES;
+            detailPagerBoundaryHeight = detailPagerAncestor.bounds.size.height;
+            break;
+        }
+        detailPagerAncestor = detailPagerAncestor.superview;
+    }
+    if (isDetailPager && detailPagerBoundaryHeight > 0.0 &&
+        self.bounds.size.height > detailPagerBoundaryHeight + 0.5) {
+        CGRect detailPagerFrame = self.frame;
+        detailPagerFrame.size.height = detailPagerBoundaryHeight;
+        self.frame = detailPagerFrame;
+        self.clipsToBounds = YES;
+    }
+
     if ([self.subviews count] == 2)
         return;
 
