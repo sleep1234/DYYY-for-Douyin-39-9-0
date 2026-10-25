@@ -11860,6 +11860,35 @@ static Class tabBarButtonClass = nil;
             detailParent = detailParent.parentViewController;
         }
         if (isDetailPlayback) {
+            UIView *detailTableBoundary = self.view;
+            CGFloat detailViewportHeight = 0.0;
+            NSUInteger detailBoundaryDepth = 0;
+            while (detailTableBoundary && detailBoundaryDepth++ < 20) {
+                if ([NSStringFromClass([detailTableBoundary class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+                    detailViewportHeight = detailTableBoundary.bounds.size.height;
+                    break;
+                }
+                detailTableBoundary = detailTableBoundary.superview;
+            }
+
+            BOOL detailRootVisibleInTable = NO;
+            if (detailTableBoundary && detailViewportHeight > 0.0) {
+                CGRect rootRectInTable = [self.view convertRect:self.view.bounds toView:detailTableBoundary];
+                detailRootVisibleInTable = CGRectGetHeight(CGRectIntersection(rootRectInTable,
+                                                                               detailTableBoundary.bounds)) > 0.5;
+            }
+
+            // 某些作者主页切换路径不会再次经过全局 setFrame:，
+            // 而是在这里直接留下 932 高的活动播放器根视图。
+            // 只收敛当前确实与 table viewport 相交的根播放器，且保持幂等。
+            if (self.view.window && !self.view.hidden && self.view.alpha > 0.0 &&
+                detailRootVisibleInTable && detailViewportHeight > 0.0 &&
+                self.view.bounds.size.height > detailViewportHeight + 0.5) {
+                CGRect rootFrame = self.view.frame;
+                rootFrame.size.height = detailViewportHeight;
+                self.view.frame = rootFrame;
+            }
+
             UIView *playerContainer = self.view.superview;
             CGRect playerFrame = self.view.frame;
             if (playerContainer && playerContainer.bounds.size.height > 0.0 &&
