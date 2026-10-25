@@ -11362,7 +11362,39 @@ static Class tabBarButtonClass = nil;
     };
     traceFrame(@"before");
 
-    if (isPlayVC && enableFS && (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
+    BOOL isDetailPlaybackBoundaryResize = NO;
+    BOOL isDetailPlaybackRoot = isPlayVC && vc.view == self;
+    if (isDetailPlaybackRoot && enableFS) {
+        BOOL hasDetailController = NO;
+        UIViewController *detailController = vc;
+        NSUInteger detailControllerDepth = 0;
+        while (detailController && detailControllerDepth++ < 12) {
+            NSString *className = NSStringFromClass([detailController class]);
+            if ([className containsString:@"AWEAwemeDetailCellViewController"] ||
+                [className containsString:@"RichContentContainerViewController"]) {
+                hasDetailController = YES;
+                break;
+            }
+            detailController = detailController.parentViewController;
+        }
+
+        CGFloat detailViewportHeight = 0.0;
+        UIView *detailAncestor = self.superview;
+        NSUInteger detailAncestorDepth = 0;
+        while (hasDetailController && detailAncestor && detailAncestorDepth++ < 20) {
+            NSString *className = NSStringFromClass([detailAncestor class]);
+            if ([className isEqualToString:@"AWEAwemeDetailTableView"]) {
+                detailViewportHeight = detailAncestor.bounds.size.height;
+                break;
+            }
+            detailAncestor = detailAncestor.superview;
+        }
+        isDetailPlaybackBoundaryResize = hasDetailController && detailViewportHeight > 0.0 &&
+                                          frame.size.height <= detailViewportHeight + 0.5;
+    }
+
+    if (isPlayVC && enableFS && !isDetailPlaybackBoundaryResize &&
+        (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
         CGRect superF = self.superview.frame;
         if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
             CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
