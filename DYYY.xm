@@ -29,6 +29,10 @@
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
+// 本版本是纯诊断包：保留现场，不执行作者主页几何修正。
+// 必须先用真实合成证据定位绘制源，再恢复任何修复逻辑。
+#define DYYY_DIAGNOSTIC_ONLY 1
+
 static CGFloat gStartY = 0.0;
 static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
@@ -47,16 +51,71 @@ static char kDYYYPlayerFrameDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticStateKey;
 static char kDYYYInteractionDiagnosticCountKey;
 static char kDYYYDetailDiagnosticStateKey;
+static char kDYYYCompositorSnapshotStateKey;
+static char kDYYYLayerFrameDiagnosticStateKey;
 static NSInteger dyyyGlobalTransparencyMutationDepth = 0;
 static NSUInteger gDYYYGeometryDiagnosticRecordCount = 0;
+static NSUInteger gDYYYCompositorSnapshotCount = 0;
 static const NSUInteger kDYYYGeometryDiagnosticRecordLimit = 500;
+static const NSUInteger kDYYYCompositorSnapshotLimit = 20;
+
+static NSObject *DYYYDiagnosticLock(void) {
+    static NSObject *lock;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        lock = [NSObject new];
+    });
+    return lock;
+}
 
 static BOOL DYYYConsumeGeometryDiagnosticRecord(void) {
-    if (gDYYYGeometryDiagnosticRecordCount >= kDYYYGeometryDiagnosticRecordLimit) {
+    @synchronized (DYYYDiagnosticLock()) {
+        if (gDYYYGeometryDiagnosticRecordCount >= kDYYYGeometryDiagnosticRecordLimit) {
+            return NO;
+        }
+        gDYYYGeometryDiagnosticRecordCount++;
+        return YES;
+    }
+}
+
+static BOOL DYYYConsumeThrottledDiagnosticRecord(id object, const void *key, CFTimeInterval now, CFTimeInterval interval) {
+    if (!object) {
         return NO;
     }
-    gDYYYGeometryDiagnosticRecordCount++;
-    return YES;
+    @synchronized (DYYYDiagnosticLock()) {
+        NSNumber *lastLog = objc_getAssociatedObject(object, key);
+        if (lastLog && now - lastLog.doubleValue < interval) {
+            return NO;
+        }
+        if (gDYYYGeometryDiagnosticRecordCount >= kDYYYGeometryDiagnosticRecordLimit) {
+            return NO;
+        }
+        gDYYYGeometryDiagnosticRecordCount++;
+        objc_setAssociatedObject(object, key, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return YES;
+    }
+}
+
+static BOOL DYYYConsumeCompositorSnapshot(id object, CFTimeInterval now) {
+    if (!object) {
+        return NO;
+    }
+    @synchronized (DYYYDiagnosticLock()) {
+        if (gDYYYCompositorSnapshotCount >= kDYYYCompositorSnapshotLimit) {
+            return NO;
+        }
+        NSNumber *lastSnapshot = objc_getAssociatedObject(object, &kDYYYCompositorSnapshotStateKey);
+        if (lastSnapshot && now - lastSnapshot.doubleValue < 0.25) {
+            return NO;
+        }
+        if (gDYYYGeometryDiagnosticRecordCount >= kDYYYGeometryDiagnosticRecordLimit) {
+            return NO;
+        }
+        gDYYYCompositorSnapshotCount++;
+        gDYYYGeometryDiagnosticRecordCount++;
+        objc_setAssociatedObject(object, &kDYYYCompositorSnapshotStateKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return YES;
+    }
 }
 
 static NSString *DYYYDiagnosticViewControllerChain(UIViewController *controller) {
@@ -98,10 +157,58 @@ static BOOL DYYYViewHasStoryPagerAncestor(UIView *view) {
     return NO;
 }
 
-static NSString *DYYYDiagnosticSubviewSummary(UIView *view, NSUInteger depth, NSUInteger maxDepth) {
-    if (!view || depth > maxDepth) {
+static NSString *DYYYDiagnosticLayerSummary(CALayer *layer) {
+    if (!layer) {
+        return @"(nil-layer)";
+    }
+    CALayer *presentation = layer.presentationLayer;
+    CGRect modelFrame = layer.frame;
+    CGRect presentationFrame = presentation ? presentation.frame : CGRectNull;
+    return [NSString stringWithFormat:@"layer=%p modelFrame=%@ presentationFrame=%@ bounds=%@ pos=(%.1f,%.1f) anchor=(%.2f,%.2f) opacity=%.2f hidden=%d masks=%d z=%.1f super=%p",
+            layer, NSStringFromCGRect(modelFrame), NSStringFromCGRect(presentationFrame),
+            NSStringFromCGRect(layer.bounds), layer.position.x, layer.position.y,
+            layer.anchorPoint.x, layer.anchorPoint.y, layer.opacity, layer.hidden, layer.masksToBounds,
+            layer.zPosition, layer.superlayer];
+}
+
+static NSString *DYYYDiagnosticLayerTree(CALayer *layer, NSUInteger depth, NSUInteger maxDepth, NSUInteger *budget, NSUInteger *omitted) {
+    if (!layer || !budget || !omitted) {
         return @"";
     }
+    if (depth > maxDepth || *budget == 0) {
+        (*omitted)++;
+        return @"";
+    }
+    (*budget)--;
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    id delegate = layer.delegate;
+    [parts addObject:[NSString stringWithFormat:@"%@layer=%p delegate=%@ frame=%@ presentation=%@ bounds=%@ hidden=%d opacity=%.2f masks=%d z=%.1f sub=%lu name=%@",
+                      [@"  " stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0],
+                      layer, delegate ? NSStringFromClass([delegate class]) : @"(nil)",
+                      NSStringFromCGRect(layer.frame),
+                      layer.presentationLayer ? NSStringFromCGRect(layer.presentationLayer.frame) : @"(none)",
+                      NSStringFromCGRect(layer.bounds), layer.hidden, layer.opacity, layer.masksToBounds,
+                      layer.zPosition, (unsigned long)layer.sublayers.count, layer.name ?: @"(nil)"]];
+    if (depth < maxDepth) {
+        for (CALayer *child in layer.sublayers) {
+            NSString *childSummary = DYYYDiagnosticLayerTree(child, depth + 1, maxDepth, budget, omitted);
+            if (childSummary.length > 0) {
+                [parts addObject:childSummary];
+            }
+        }
+    }
+    return [parts componentsJoinedByString:@"\\n"];
+}
+
+static NSString *DYYYDiagnosticSubviewSummary(UIView *view, NSUInteger depth, NSUInteger maxDepth, NSUInteger *budget, NSUInteger *omitted) {
+    if (!view || !budget || !omitted) {
+        return @"";
+    }
+    if (depth > maxDepth || *budget == 0) {
+        (*omitted)++;
+        return @"";
+    }
+    (*budget)--;
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
     CGRect frame = view.frame;
     [parts addObject:[NSString stringWithFormat:@"%@%@@%p f=(%.1f,%.1f,%.1f,%.1f) b=(%.1f,%.1f,%.1f,%.1f) h=%d a=%.2f c=%d z=%.1f sub=%lu",
@@ -113,13 +220,124 @@ static NSString *DYYYDiagnosticSubviewSummary(UIView *view, NSUInteger depth, NS
                       (unsigned long)view.subviews.count]];
     if (depth < maxDepth) {
         for (UIView *child in view.subviews) {
-            NSString *childSummary = DYYYDiagnosticSubviewSummary(child, depth + 1, maxDepth);
+            NSString *childSummary = DYYYDiagnosticSubviewSummary(child, depth + 1, maxDepth, budget, omitted);
             if (childSummary.length > 0) {
                 [parts addObject:childSummary];
             }
         }
     }
     return [parts componentsJoinedByString:@"\\n"];
+}
+
+static BOOL DYYYViewHasVisibleAncestorChain(UIView *view, UIWindow *window) {
+    CGFloat effectiveAlpha = 1.0;
+    UIView *cursor = view;
+    NSUInteger depth = 0;
+    while (cursor && depth++ < 24) {
+        if (cursor.hidden || cursor.alpha <= 0.0 || cursor.window != window) {
+            return NO;
+        }
+        effectiveAlpha *= cursor.alpha;
+        if (effectiveAlpha <= 0.001) {
+            return NO;
+        }
+        cursor = cursor.superview;
+    }
+    return cursor == nil;
+}
+
+static BOOL DYYYLayerBelongsToDetailPlayer(CALayer *layer, UIView **ownerView) {
+    CALayer *cursor = layer;
+    NSUInteger depth = 0;
+    while (cursor && depth++ < 24) {
+        id delegate = cursor.delegate;
+        if ([delegate isKindOfClass:[UIView class]]) {
+            UIView *view = (UIView *)delegate;
+            UIViewController *controller = [DYYYUtils firstAvailableViewControllerFromView:view];
+            UIViewController *vcCursor = controller;
+            NSUInteger vcDepth = 0;
+            while (vcCursor && vcDepth++ < 12) {
+                NSString *className = NSStringFromClass([vcCursor class]);
+                if ([className containsString:@"AWEAwemeDetailCellViewController"]) {
+                    if (ownerView) {
+                        *ownerView = view;
+                    }
+                    return YES;
+                }
+                vcCursor = vcCursor.parentViewController;
+            }
+        }
+        cursor = cursor.superlayer;
+    }
+    return NO;
+}
+
+static void DYYYLogCompositorSnapshot(UIView *playerView, UIView *detailTable, NSString *reason) {
+    if (![NSThread isMainThread] || !playerView || !detailTable || !playerView.superview ||
+        !playerView.window || !detailTable.window || playerView.window != detailTable.window ||
+        !DYYYViewHasVisibleAncestorChain(playerView, playerView.window) ||
+        !DYYYViewHasVisibleAncestorChain(detailTable, detailTable.window)) {
+        return;
+    }
+    CGRect playerWindowRect = [playerView convertRect:playerView.bounds toView:nil];
+    CGRect tableWindowRect = [detailTable convertRect:detailTable.bounds toView:nil];
+    if (CGRectIsNull(playerWindowRect) || CGRectIsNull(tableWindowRect) ||
+        CGRectIsEmpty(CGRectIntersection(playerWindowRect, tableWindowRect))) {
+        return;
+    }
+    CFTimeInterval now = CACurrentMediaTime();
+    if (!DYYYConsumeCompositorSnapshot(playerView, now)) {
+        return;
+    }
+    DYYYNSLog(@"[DYYYCompositorDiag] reason=%@ player=%@ ptr=%p window=%@ table=%@ playerWindowRect=%@ tableWindowRect=%@ playerWindow=%p playerHidden=%d playerAlpha=%.2f playerUserInteraction=%d playerLayer={%@}",
+              reason ?: @"(none)", NSStringFromClass([playerView class]), (__bridge void *)playerView,
+              playerView.window, detailTable.window, NSStringFromCGRect(playerWindowRect),
+              NSStringFromCGRect(tableWindowRect), playerView.window, playerView.hidden, playerView.alpha,
+              playerView.userInteractionEnabled, DYYYDiagnosticLayerSummary(playerView.layer));
+
+    UIView *cursor = playerView;
+    NSUInteger depth = 0;
+    while (cursor && depth++ < 18) {
+        CGRect windowRect = cursor.window ? [cursor convertRect:cursor.bounds toView:nil] : CGRectNull;
+        DYYYNSLog(@"[DYYYCompositorAncestor] depth=%lu view=%@ ptr=%p localFrame=%@ bounds=%@ windowRect=%@ hidden=%d alpha=%.2f clips=%d opaque=%d layer={%@}",
+                  (unsigned long)(depth - 1), NSStringFromClass([cursor class]), (__bridge void *)cursor,
+                  NSStringFromCGRect(cursor.frame), NSStringFromCGRect(cursor.bounds), NSStringFromCGRect(windowRect),
+                  cursor.hidden, cursor.alpha, cursor.clipsToBounds, cursor.opaque,
+                  DYYYDiagnosticLayerSummary(cursor.layer));
+        cursor = cursor.superview;
+    }
+
+    NSUInteger siblingBudget = 32;
+    NSUInteger omittedSiblingCount = 0;
+    for (UIView *sibling in playerView.superview.subviews) {
+        if (sibling == playerView) {
+            continue;
+        }
+        if (siblingBudget == 0) {
+            omittedSiblingCount++;
+            continue;
+        }
+        siblingBudget--;
+        CGRect windowRect = sibling.window ? [sibling convertRect:sibling.bounds toView:nil] : CGRectNull;
+        DYYYNSLog(@"[DYYYCompositorSibling] parent=%p sibling=%@ ptr=%p localFrame=%@ windowRect=%@ hidden=%d alpha=%.2f clips=%d layer={%@}",
+                  (__bridge void *)playerView.superview, NSStringFromClass([sibling class]), (__bridge void *)sibling,
+                  NSStringFromCGRect(sibling.frame), NSStringFromCGRect(windowRect), sibling.hidden, sibling.alpha,
+                  sibling.clipsToBounds, DYYYDiagnosticLayerSummary(sibling.layer));
+    }
+    if (omittedSiblingCount > 0) {
+        DYYYNSLog(@"[DYYYCompositorSibling] parent=%p truncated=1 omitted=%lu", (__bridge void *)playerView.superview,
+                  (unsigned long)omittedSiblingCount);
+    }
+
+    NSUInteger viewNodeBudget = 160;
+    NSUInteger layerNodeBudget = 160;
+    NSUInteger omittedViewNodes = 0;
+    NSUInteger omittedLayerNodes = 0;
+    NSString *viewTree = DYYYDiagnosticSubviewSummary(playerView, 0, 5, &viewNodeBudget, &omittedViewNodes);
+    NSString *layerTree = DYYYDiagnosticLayerTree(playerView.layer, 0, 6, &layerNodeBudget, &omittedLayerNodes);
+    DYYYNSLog(@"[DYYYCompositorTree] player=%p viewNodesRemaining=%lu omittedViewNodes=%lu layerNodesRemaining=%lu omittedLayerNodes=%lu viewTree=\\n%@ layerTree=\\n%@",
+              (__bridge void *)playerView, (unsigned long)viewNodeBudget, (unsigned long)omittedViewNodes,
+              (unsigned long)layerNodeBudget, (unsigned long)omittedLayerNodes, viewTree, layerTree);
 }
 
 static void updateGlobalTransparencyCache() {
@@ -2647,6 +2865,41 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 %end
 
 %hook CALayer
+
+- (void)setFrame:(CGRect)frame {
+    UIView *ownerView = nil;
+    BOOL traceLayer = DYYY_DIAGNOSTIC_ONLY && [NSThread isMainThread] &&
+                      DYYYLayerBelongsToDetailPlayer(self, &ownerView);
+    CGRect oldFrame = self.frame;
+    CFTimeInterval now = CACurrentMediaTime();
+    BOOL changed = !CGRectEqualToRect(oldFrame, frame);
+    BOOL emit = traceLayer && changed && DYYYConsumeThrottledDiagnosticRecord(self, &kDYYYLayerFrameDiagnosticStateKey, now, 0.05);
+    if (emit) {
+        CGRect ownerWindowRect = ownerView.window ? [ownerView convertRect:ownerView.bounds toView:nil] : CGRectNull;
+        DYYYNSLog(@"[DYYYLayerFrameWrite] layer=%p owner=%@ ownerPtr=%p old=%@ requested=%@ ownerWindowRect=%@ layerSummary=%@ stack=%@",
+                  self, NSStringFromClass([ownerView class]), (__bridge void *)ownerView,
+                  NSStringFromCGRect(oldFrame), NSStringFromCGRect(frame), NSStringFromCGRect(ownerWindowRect),
+                  DYYYDiagnosticLayerSummary(self),
+                  [[[NSThread callStackSymbols] subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)10, [NSThread callStackSymbols].count))] componentsJoinedByString:@"|"]);
+    }
+    %orig(frame);
+}
+
+- (void)setBounds:(CGRect)bounds {
+    UIView *ownerView = nil;
+    BOOL traceLayer = DYYY_DIAGNOSTIC_ONLY && [NSThread isMainThread] &&
+                      DYYYLayerBelongsToDetailPlayer(self, &ownerView);
+    CGRect oldBounds = self.bounds;
+    if (traceLayer && !CGRectEqualToRect(oldBounds, bounds) &&
+        DYYYConsumeThrottledDiagnosticRecord(self, &kDYYYLayerFrameDiagnosticStateKey, CACurrentMediaTime(), 0.05)) {
+        CGRect ownerWindowRect = ownerView.window ? [ownerView convertRect:ownerView.bounds toView:nil] : CGRectNull;
+        DYYYNSLog(@"[DYYYLayerBoundsWrite] layer=%p owner=%@ ownerPtr=%p old=%@ requested=%@ ownerWindowRect=%@ stack=%@",
+                  self, NSStringFromClass([ownerView class]), (__bridge void *)ownerView,
+                  NSStringFromCGRect(oldBounds), NSStringFromCGRect(bounds), NSStringFromCGRect(ownerWindowRect),
+                  [[[NSThread callStackSymbols] subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)10, [NSThread callStackSymbols].count))] componentsJoinedByString:@"|"]);
+    }
+    %orig(bounds);
+}
 
 - (void)setHidden:(BOOL)hidden {
     %orig(DYYYShouldForceHideAvatarActionLayer(self) ? YES : hidden);
@@ -11332,12 +11585,9 @@ static Class tabBarButtonClass = nil;
                              fabs(previousFrame.origin.y - frame.origin.y) > 0.5 ||
                              fabs(previousFrame.size.width - frame.size.width) > 0.5 ||
                              fabs(previousFrame.size.height - frame.size.height) > 0.5);
-    NSNumber *lastPlayerFrameLogTime = objc_getAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey);
     CFTimeInterval frameDiagNow = CACurrentMediaTime();
-    BOOL shouldEmitFrameLog = shouldTraceFrame && (!lastPlayerFrameLogTime || frameDiagNow - lastPlayerFrameLogTime.doubleValue >= 0.10) && DYYYConsumeGeometryDiagnosticRecord();
-    if (shouldEmitFrameLog) {
-        objc_setAssociatedObject(self, &kDYYYPlayerFrameDiagnosticStateKey, @(frameDiagNow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    BOOL shouldEmitFrameLog = shouldTraceFrame &&
+                               DYYYConsumeThrottledDiagnosticRecord(self, &kDYYYPlayerFrameDiagnosticStateKey, frameDiagNow, 0.10);
     void (^traceFrame)(NSString *) = ^(NSString *phase) {
         if (!shouldEmitFrameLog) {
             return;
@@ -11395,6 +11645,7 @@ static Class tabBarButtonClass = nil;
                                           frame.size.height <= detailViewportHeight + 0.5;
     }
 
+#if !DYYY_DIAGNOSTIC_ONLY
     if (isPlayVC && enableFS && !isDetailPlaybackBoundaryResize &&
         (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
         CGRect superF = self.superview.frame;
@@ -11405,7 +11656,13 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+#endif
 
+    if (shouldEmitFrameLog && isDetailPlaybackRoot) {
+        DYYYNSLog(@"[DYYYFrameWriteCallsite] self=%p old=%@ requested=%@ stack=%@", (__bridge void *)self,
+                  NSStringFromCGRect(previousFrame), NSStringFromCGRect(frame),
+                  [[NSThread callStackSymbols] componentsJoinedByString:@"|"]);
+    }
     %orig(frame);
     traceFrame(@"after");
 }
@@ -11624,9 +11881,11 @@ static Class tabBarButtonClass = nil;
         frame.size.height = superviewHeight - gCurrentTabBarHeight;
     }
 
+#if !DYYY_DIAGNOSTIC_ONLY
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
     }
+#endif
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -11744,6 +12003,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidLayoutSubviews {
     %orig;
+#if !DYYY_DIAGNOSTIC_ONLY
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
@@ -11759,6 +12019,7 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+#endif
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -11823,15 +12084,20 @@ static Class tabBarButtonClass = nil;
                                           ancestor.clipsToBounds]];
                 ancestor = ancestor.superview;
             }
+            NSUInteger detailNodeBudget = 80;
+            NSUInteger detailOmittedNodes = 0;
+            NSString *detailTree = DYYYDiagnosticSubviewSummary(self.view, 0, 3, &detailNodeBudget, &detailOmittedNodes);
             DYYYNSLog(@"[DYYYDetailDiag] player=%@ playerVC=%@ vcChain=%@ ancestors=%@ tree=\\n%@",
                       NSStringFromClass([self.view class]), (__bridge void *)self.view,
                       DYYYDiagnosticViewControllerChain(self),
-                      [ancestorParts componentsJoinedByString:@""],
-                      DYYYDiagnosticSubviewSummary(self.view, 0, 3));
+                      [ancestorParts componentsJoinedByString:@""], detailTree);
+            DYYYNSLog(@"[DYYYDetailDiagBudget] player=%p remaining=%lu omitted=%lu", (__bridge void *)self.view,
+                      (unsigned long)detailNodeBudget, (unsigned long)detailOmittedNodes);
         }
     }
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+#if !DYYY_DIAGNOSTIC_ONLY
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
             CGRect frame = contentView.frame;
@@ -11845,6 +12111,7 @@ static Class tabBarButtonClass = nil;
                 contentView.frame = frame;
             }
         }
+#endif
 
         // RichContent 作者主页的 detail cell 可能让播放器中间 wrapper 保持 932 高，
         // 而真正的 UITableViewCellContentView/AWEAwemeDetailTableViewCell 只有 849 高。
@@ -11878,9 +12145,12 @@ static Class tabBarButtonClass = nil;
                                                                                detailTableBoundary.bounds)) > 0.5;
             }
 
+            DYYYLogCompositorSnapshot(self.view, detailTableBoundary, @"detail-layout-before-fix");
+
             // 某些作者主页切换路径不会再次经过全局 setFrame:，
             // 而是在这里直接留下 932 高的活动播放器根视图。
-            // 只收敛当前确实与 table viewport 相交的根播放器，且保持幂等。
+            // 诊断包只记录，不收敛当前播放器几何。
+#if !DYYY_DIAGNOSTIC_ONLY
             if (self.view.window && !self.view.hidden && self.view.alpha > 0.0 &&
                 detailRootVisibleInTable && detailViewportHeight > 0.0 &&
                 self.view.bounds.size.height > detailViewportHeight + 0.5) {
@@ -11888,7 +12158,9 @@ static Class tabBarButtonClass = nil;
                 rootFrame.size.height = detailViewportHeight;
                 self.view.frame = rootFrame;
             }
+#endif
 
+#if !DYYY_DIAGNOSTIC_ONLY
             UIView *playerContainer = self.view.superview;
             CGRect playerFrame = self.view.frame;
             if (playerContainer && playerContainer.bounds.size.height > 0.0 &&
@@ -11913,6 +12185,7 @@ static Class tabBarButtonClass = nil;
                 }
                 ancestor = ancestor.superview;
             }
+#endif
         }
     }
 }
@@ -11942,6 +12215,7 @@ static Class tabBarButtonClass = nil;
 - (void)layoutSubviews {
     %orig;
 
+#if !DYYY_DIAGNOSTIC_ONLY
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         CGRect frame = self.frame;
         frame.size.height = self.superview.frame.size.height;
@@ -11956,6 +12230,7 @@ static Class tabBarButtonClass = nil;
         frame.size.height = self.superview.frame.size.height - gCurrentTabBarHeight;
         self.frame = frame;
     }
+#endif
 }
 %end
 
@@ -12574,6 +12849,7 @@ static Class TagViewClass = nil;
         }
         detailPagerAncestor = detailPagerAncestor.superview;
     }
+#if !DYYY_DIAGNOSTIC_ONLY
     if (isDetailPager && detailPagerBoundaryHeight > 0.0 &&
         self.bounds.size.height > detailPagerBoundaryHeight + 0.5) {
         CGRect detailPagerFrame = self.frame;
@@ -12581,6 +12857,7 @@ static Class TagViewClass = nil;
         self.frame = detailPagerFrame;
         self.clipsToBounds = YES;
     }
+#endif
 
     if ([self.subviews count] == 2)
         return;
@@ -12599,6 +12876,8 @@ static Class TagViewClass = nil;
     if (isAuthorProfile) {
         return;
     }
+
+#if !DYYY_DIAGNOSTIC_ONLY
 
     id enableEnterProfile = nil;
     @try {
@@ -12629,6 +12908,7 @@ static Class TagViewClass = nil;
             }
         }
     }
+#endif
 }
 %end
 
@@ -12673,6 +12953,7 @@ static Class TagViewClass = nil;
 
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
+#if !DYYY_DIAGNOSTIC_ONLY
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -12698,12 +12979,15 @@ static Class TagViewClass = nil;
         }
     }
 
+#else
     %orig(center);
+#endif
 }
 %end
 
 %hook TTMetalViewNew
 - (void)setCenter:(CGPoint)center {
+#if !DYYY_DIAGNOSTIC_ONLY
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -12729,12 +13013,15 @@ static Class TagViewClass = nil;
         }
     }
 
+#else
     %orig(center);
+#endif
 }
 %end
 
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
+#if !DYYY_DIAGNOSTIC_ONLY
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -12760,7 +13047,9 @@ static Class TagViewClass = nil;
         }
     }
 
+#else
     %orig(center);
+#endif
 }
 %end
 
@@ -12851,6 +13140,7 @@ static Class TagViewClass = nil;
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
+#if !DYYY_DIAGNOSTIC_ONLY
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         // 40.7 的 RichContent/AWEStory 横向分页以当前 viewport 高度布局。
         // 旧的按屏幕高度取模会把 849 高的 detail table 强行扩到 932，
@@ -12865,7 +13155,9 @@ static Class TagViewClass = nil;
             }
         }
     }
+#else
     %orig(frame);
+#endif
 }
 
 %end
@@ -13228,6 +13520,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // DYKiller 同类实现是在 setFrame: 阶段修正容器，而不是只等 layoutSubviews。
 // 保留原有评论模糊的 y 过滤，再仅对 detail 播放链路收敛高度。
 - (void)setFrame:(CGRect)frame {
+#if !DYYY_DIAGNOSTIC_ONLY
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && frame.origin.y != 0) {
         return;
     }
@@ -13263,7 +13556,9 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
 
+#else
     %orig(frame);
+#endif
 }
 
 %end
