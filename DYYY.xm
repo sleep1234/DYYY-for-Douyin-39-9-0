@@ -11362,7 +11362,37 @@ static Class tabBarButtonClass = nil;
     };
     traceFrame(@"before");
 
-    if (isPlayVC && enableFS && (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
+    BOOL isDetailPlaybackBoundaryResize = NO;
+    if (isPlayVC && enableFS) {
+        BOOL hasDetailController = NO;
+        UIViewController *detailController = vc;
+        NSUInteger detailControllerDepth = 0;
+        while (detailController && detailControllerDepth++ < 12) {
+            NSString *className = NSStringFromClass([detailController class]);
+            if ([className containsString:@"AWEAwemeDetailCellViewController"] ||
+                [className containsString:@"RichContentContainerViewController"]) {
+                hasDetailController = YES;
+                break;
+            }
+            detailController = detailController.parentViewController;
+        }
+        CGFloat detailViewportHeight = 0.0;
+        UIView *detailAncestor = self.superview;
+        NSUInteger detailAncestorDepth = 0;
+        while (hasDetailController && detailAncestor && detailAncestorDepth++ < 20) {
+            NSString *className = NSStringFromClass([detailAncestor class]);
+            if ([className isEqualToString:@"AWEAwemeDetailTableView"]) {
+                detailViewportHeight = detailAncestor.bounds.size.height;
+                break;
+            }
+            detailAncestor = detailAncestor.superview;
+        }
+        isDetailPlaybackBoundaryResize = hasDetailController && detailViewportHeight > 0.0 &&
+                                          frame.size.height <= detailViewportHeight + 0.5;
+    }
+
+    if (isPlayVC && enableFS && !isDetailPlaybackBoundaryResize &&
+        (fabs(frame.origin.x) <= 0.5 && fabs(frame.origin.y) <= 0.5)) {
         CGRect superF = self.superview.frame;
         if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
             CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
@@ -11834,6 +11864,28 @@ static Class tabBarButtonClass = nil;
                 // 横向/纵向切换时播放器会暂时带负 y；当前 wrapper 明确为 849 高且 clips=0。
                 // 先裁剪这个实际过渡边界，防止旧视频从当前页顶部露出。
                 playerContainer.clipsToBounds = YES;
+            }
+
+            // 最新日志显示某些旧 AWEDPlayerViewController_Merge.view 自身仍是 932 高，
+            // 即使外层 detail table 已经是 849 高。直接收敛播放器根 view，避免旧页
+            // 在 wrapper/table 的边界之外继续参与合成。
+            CGFloat detailViewportHeight = 0.0;
+            UIView *detailViewport = self.view;
+            NSUInteger detailViewportDepth = 0;
+            while (detailViewport && detailViewportDepth++ < 20) {
+                NSString *className = NSStringFromClass([detailViewport class]);
+                if ([className isEqualToString:@"AWEAwemeDetailTableView"]) {
+                    detailViewportHeight = detailViewport.bounds.size.height;
+                    break;
+                }
+                detailViewport = detailViewport.superview;
+            }
+            if (detailViewportHeight > 0.0 && self.view.bounds.size.height > detailViewportHeight + 0.5) {
+                CGRect correctedPlayerFrame = self.view.frame;
+                correctedPlayerFrame.size.height = detailViewportHeight;
+                self.view.clipsToBounds = YES;
+                self.view.frame = correctedPlayerFrame;
+                playerFrame = self.view.frame;
             }
 
             CGFloat playerHeight = self.view.bounds.size.height;
@@ -12465,6 +12517,51 @@ static Class TagViewClass = nil;
 
 %hook AWEStoryContainerCollectionView
 
+// 40.7 切换作者主页作品时，UIKit 可能通过 setBounds: 把 pager 恢复为屏幕高，
+// 这条路径不会稳定触发 setFrame:；因此与 setFrame/layoutSubviews 一样收敛到 detail cell 边界。
+- (void)setBounds:(CGRect)bounds {
+    %orig(bounds);
+
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
+    }
+
+    BOOL hasDetailController = NO;
+    UIResponder *detailResponder = self;
+    NSUInteger detailResponderDepth = 0;
+    while ((detailResponder = [detailResponder nextResponder]) && detailResponderDepth++ < 24) {
+        NSString *className = NSStringFromClass([detailResponder class]);
+        if ([className containsString:@"AWEAwemeDetailCellViewController"] ||
+            [className containsString:@"RichContentContainerViewController"]) {
+            hasDetailController = YES;
+            break;
+        }
+    }
+    if (!hasDetailController) {
+        return;
+    }
+
+    CGFloat boundaryHeight = 0.0;
+    UIView *ancestor = self.superview;
+    NSUInteger ancestorDepth = 0;
+    while (ancestor && ancestorDepth++ < 12) {
+        NSString *className = NSStringFromClass([ancestor class]);
+        if ([className isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
+            [className isEqualToString:@"UITableViewCellContentView"]) {
+            boundaryHeight = ancestor.bounds.size.height;
+            break;
+        }
+        ancestor = ancestor.superview;
+    }
+    if (boundaryHeight <= 0.0 || self.bounds.size.height <= boundaryHeight + 0.5) {
+        return;
+    }
+
+    CGRect correctedBounds = self.bounds;
+    correctedBounds.size.height = boundaryHeight;
+    %orig(correctedBounds);
+}
+
 - (void)layoutSubviews {
     %orig;
 
@@ -12498,10 +12595,20 @@ static Class TagViewClass = nil;
     // 会把旧页上方的一条画面带到当前页。只对 detail cell 内的 pager
     // 收敛到真实 cell 边界，首页 Feed 不走此分支。
     BOOL isDetailPager = NO;
+    UIResponder *detailPagerResponder = self;
+    NSUInteger detailPagerResponderDepth = 0;
+    while ((detailPagerResponder = [detailPagerResponder nextResponder]) && detailPagerResponderDepth++ < 24) {
+        NSString *responderClass = NSStringFromClass([detailPagerResponder class]);
+        if ([responderClass containsString:@"AWEAwemeDetailCellViewController"] ||
+            [responderClass containsString:@"RichContentContainerViewController"]) {
+            isDetailPager = YES;
+            break;
+        }
+    }
     CGFloat detailPagerBoundaryHeight = 0.0;
     UIView *detailPagerAncestor = self.superview;
     NSUInteger detailPagerDepth = 0;
-    while (detailPagerAncestor && detailPagerDepth++ < 12) {
+    while (isDetailPager && detailPagerAncestor && detailPagerDepth++ < 12) {
         NSString *detailPagerClass = NSStringFromClass([detailPagerAncestor class]);
         if ([detailPagerClass isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
             [detailPagerClass isEqualToString:@"UITableViewCellContentView"]) {
