@@ -11389,7 +11389,9 @@ static Class tabBarButtonClass = nil;
             }
             detailAncestor = detailAncestor.superview;
         }
+        CGFloat parentHeight = self.superview.bounds.size.height;
         isDetailPlaybackBoundaryResize = hasDetailController && detailViewportHeight > 0.0 &&
+                                          parentHeight > detailViewportHeight + 0.5 &&
                                           frame.size.height <= detailViewportHeight + 0.5;
     }
 
