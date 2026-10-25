@@ -12465,50 +12465,6 @@ static Class TagViewClass = nil;
 
 %hook AWEStoryContainerCollectionView
 
-// DYKiller 同类实现是在 setFrame: 阶段修正容器，而不是只等 layoutSubviews。
-// 仅针对作者主页 detail 链路，避免影响首页 Feed 的 pager。
-- (void)setFrame:(CGRect)frame {
-    %orig(frame);
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    BOOL hasDetailController = NO;
-    UIResponder *responder = self;
-    NSUInteger responderDepth = 0;
-    while ((responder = [responder nextResponder]) && responderDepth++ < 24) {
-        NSString *className = NSStringFromClass([responder class]);
-        if ([className containsString:@"AWEAwemeDetailCellViewController"] ||
-            [className containsString:@"RichContentContainerViewController"]) {
-            hasDetailController = YES;
-            break;
-        }
-    }
-    if (!hasDetailController) {
-        return;
-    }
-
-    CGFloat boundaryHeight = 0.0;
-    UIView *ancestor = self.superview;
-    NSUInteger ancestorDepth = 0;
-    while (ancestor && ancestorDepth++ < 12) {
-        NSString *className = NSStringFromClass([ancestor class]);
-        if ([className isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
-            [className isEqualToString:@"UITableViewCellContentView"]) {
-            boundaryHeight = ancestor.bounds.size.height;
-            break;
-        }
-        ancestor = ancestor.superview;
-    }
-    if (boundaryHeight <= 0.0 || frame.size.height <= boundaryHeight + 0.5) {
-        return;
-    }
-
-    frame.size.height = boundaryHeight;
-    %orig(frame);
-}
-
 - (void)layoutSubviews {
     %orig;
 
@@ -13206,12 +13162,44 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 %hook AWEStoryContainerCollectionView
 
+// DYKiller 同类实现是在 setFrame: 阶段修正容器，而不是只等 layoutSubviews。
+// 保留原有评论模糊的 y 过滤，再仅对 detail 播放链路收敛高度。
 - (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        if (frame.origin.y != 0) {
-            return;
+    if (DYYYGetBool(@"DYYYEnableCommentBlur") && frame.origin.y != 0) {
+        return;
+    }
+
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        BOOL hasDetailController = NO;
+        UIResponder *responder = self;
+        NSUInteger responderDepth = 0;
+        while ((responder = [responder nextResponder]) && responderDepth++ < 24) {
+            NSString *className = NSStringFromClass([responder class]);
+            if ([className containsString:@"AWEAwemeDetailCellViewController"] ||
+                [className containsString:@"RichContentContainerViewController"]) {
+                hasDetailController = YES;
+                break;
+            }
+        }
+        if (hasDetailController) {
+            CGFloat boundaryHeight = 0.0;
+            UIView *ancestor = self.superview;
+            NSUInteger ancestorDepth = 0;
+            while (ancestor && ancestorDepth++ < 12) {
+                NSString *className = NSStringFromClass([ancestor class]);
+                if ([className isEqualToString:@"AWEAwemeDetailTableViewCell"] ||
+                    [className isEqualToString:@"UITableViewCellContentView"]) {
+                    boundaryHeight = ancestor.bounds.size.height;
+                    break;
+                }
+                ancestor = ancestor.superview;
+            }
+            if (boundaryHeight > 0.0 && frame.size.height > boundaryHeight + 0.5) {
+                frame.size.height = boundaryHeight;
+            }
         }
     }
+
     %orig(frame);
 }
 
